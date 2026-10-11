@@ -1,0 +1,17 @@
+{
+  "name": "Copec",
+  "short_name": "Copec",
+  "description": "Registro personal del saldo de la cuenta Copec Pay, con los cargos automáticos leídos de los avisos que llegan por correo.",
+  "lang": "es-CL",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#002df9",
+  "theme_color": "#002df9",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
