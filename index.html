@@ -354,7 +354,7 @@ svg { display: block; }
   var POLL_FAST = 60 * 1000;
   var POLL_SLOW = 5 * 60 * 1000;
   var POLL_WINDOW = 10 * 60 * 1000;
-  var READER = 1;                      // versión del lector de avisos: cuando cambia, el buzón se relee completo una vez
+  var READER = 2;                      // versión del lector de avisos: cuando cambia, el buzón se relee completo una vez
   // Si la app está en GitHub Pages, el buzón se sugiere en la misma cuenta
   var OWNER = /\.github\.io$/i.test(location.hostname) ? location.hostname.split('.')[0] : '';
 
@@ -502,6 +502,8 @@ svg { display: block; }
   function oneLine(s) { return plainText(s).replace(/\s+/g, ' ').trim(); }
 
   var LETTER = 'a-záéíóúüñ';
+  // La app registra solo los correos de bip!: los que traen «bip» en el asunto («Tu compra en Carga bip! se realizó con éxito»)
+  var RE_BIP = new RegExp('(?:^|[^' + LETTER + '0-9])bip(?![' + LETTER + '0-9])', 'i');
   // Palabras de un movimiento que saca dinero de la cuenta
   var RE_CARGO = new RegExp('(?:^|[^' + LETTER + '])(?:compra|cargo|carg[oó]|pago|pag[oó]|pagaste|pagamos|cobr|transacci|suscripci|d[ée]bit|descont|recarga|carga|giro|retir|transfer|consumo|movimiento|operaci[oó]n)', 'i');
   // Un cargo que no se hizo: no descuenta
@@ -640,11 +642,12 @@ svg { display: block; }
     return false;
   }
 
-  // Lee un aviso. «kind»: 'c' cargo, 'd' aviso de abono, 'x' cargo rechazado, 'f' cargo en dólares, '' no es un aviso.
+  // Lee un aviso. «kind»: 'c' cargo, 'd' aviso de abono o devolución, 'x' cargo rechazado, 'f' cargo en dólares,
+  // 'o' correo de otro asunto y '' un correo de bip! que no se reconoce como aviso.
   function readNotice(text, ref) {
     var lines = text.split(/[\r\n\t]+/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
     var flat = lines.join(' ');
-    var out = { kind: '', amount: 0, merchant: '', date: '', time: '', op: '', text: flat.slice(0, 300) };
+    var out = { kind: '', amount: 0, merchant: '', date: '', time: '', op: '', bip: RE_BIP.test(flat), text: flat.slice(0, 300) };
     var pay = flat ? findAmount(flat) : null;
     if (!pay) return out;
     var when = findWhen(flat, ref);
@@ -652,11 +655,14 @@ svg { display: block; }
     out.date = when.date; out.time = when.time;
     out.merchant = findMerchant(lines, flat, pay.end);
     out.op = findOp(flat);
+    // El asunto y el encabezado del aviso van antes del monto: ahí, o en el nombre del comercio, tiene que decir «bip».
+    // Una mención de bip! más abajo (en la letra chica de otro correo) no cuenta.
+    out.bip = RE_BIP.test(flat.slice(0, pay.idx) + ' ' + out.merchant);
     // El rechazo o el abono se anuncian junto al monto, no en la letra chica del final del correo
     out.kind = says(RE_NO, flat.slice(0, pay.end + 120)) ? 'x' : says(RE_IN, flat.slice(0, pay.end + 60)) ? 'd' : !RE_CARGO.test(flat) ? '' : pay.foreign ? 'f' : 'c';
     return out;
   }
-  function parseMail(raw, ref) {
+  function parseAny(raw, ref) {
     // Primero el texto tal como llegó. Si trae líneas cortadas con «=», primero su versión decodificada,
     // para no leer un comercio o una hora partidos por la mitad.
     var texts = [String(raw == null ? '' : raw)], alt = unwrapMail(raw), first = null;
@@ -664,9 +670,15 @@ svg { display: block; }
     for (var i = 0; i < texts.length; i++) {
       var p = readNotice(plainText(texts[i]), ref);
       if (p.kind) return p;
-      if (!first) first = p;
+      if (!first || (p.bip && !first.bip)) first = p;
     }
     return first;
+  }
+  // Solo cuentan los correos de bip!. Los demás correos de Copec Pay (otras compras, abonos, promociones) se dejan fuera.
+  function parseMail(raw, ref) {
+    var p = parseAny(raw, ref);
+    if (!p.bip) p.kind = 'o';
+    return p;
   }
   // Deja el cargo listo para guardarlo. «at» es el momento en que el aviso llegó al buzón (0 si se pegó a mano)
   // y «num», su número dentro del buzón.
@@ -684,7 +696,7 @@ svg { display: block; }
     } else if (!time) {
       nt = 1; time = at && dayKey(ref) > date ? '23:59' : '00:00';
     }
-    var name = p.merchant || 'Cargo automático', exact = !!(p.op || (p.date && p.time));
+    var name = p.merchant || 'Carga bip!', exact = !!(p.op || (p.date && p.time));
     var key = p.op ? 'OP' + p.op + '|' + p.amount
       : exact ? date + 'T' + time + '|' + p.amount + '|' + name.toUpperCase()
       : num ? 'I' + num + '|' + p.amount
@@ -717,7 +729,7 @@ svg { display: block; }
       type: type,
       date: date,
       time: TIME_RE.test(String(p.time)) ? String(p.time) : '12:00',
-      desc: clean(p.desc) || (type === 'd' ? 'Abono' : src === 'mail' ? 'Cargo automático' : 'Cargo'),
+      desc: clean(p.desc) || (type === 'd' ? 'Abono' : src === 'mail' ? 'Carga bip!' : 'Cargo'),
       amount: amount,
       src: src,
       key: src === 'mail' ? String(p.key || '').slice(0, 180) : '',
@@ -892,6 +904,7 @@ svg { display: block; }
     if (parsed.abono) parts.push(parsed.abono + plural(parsed.abono, ' aviso de abono', ' avisos de abono'));
     if (parsed.no) parts.push(parsed.no + plural(parsed.no, ' cargo rechazado', ' cargos rechazados'));
     if (parsed.foreign) parts.push(parsed.foreign + ' en dólares');
+    if (parsed.other) parts.push(parsed.other + ' de otro asunto');
     return parts.length ? ' Sin contar: ' + parts.join(', ') + '.' : '';
   }
   // Agrega los cargos leídos que falten y cuenta qué pasó, para que cada origen arme su mensaje
@@ -919,7 +932,7 @@ svg { display: block; }
     return msg + (parsed ? skippedNote(parsed) : '');
   }
   function pasteResult() {
-    var p = parseMail(val('f-paste'), 0), parsed = { found: [], abono: 0, no: 0, foreign: 0 };
+    var p = parseMail(val('f-paste'), 0), parsed = { found: [], abono: 0, no: 0, foreign: 0, other: 0 };
     if (p.kind === 'c') parsed.found.push(settle(p, 0, 0));
     return { p: p, parsed: parsed };
   }
@@ -937,8 +950,9 @@ svg { display: block; }
   // «created_at» es el momento en que el iPhone envió el correo al buzón: de noche está apagado, así que suele ser la mañana.
   function fetchError(status) { var e = new Error('http'); e.status = status; return e; }
   function issueMsg(it) {
-    var title = String(it.title || '');   // el título solo cuenta si trae el aviso; «Copec» a secas es la etiqueta del atajo
-    return { text: (title.length > 20 ? title + '\n' : '') + String(it.body || ''), at: Date.parse(it.created_at) || 0, num: +it.number || 0 };
+    // «Copec» a secas es la etiqueta fija del atajo. Cualquier otro título es el asunto del correo y se lee como su primera línea.
+    var title = String(it.title || '').trim();
+    return { text: (title && !/^(?:copec|aviso)$/i.test(title) ? title + '\n' : '') + String(it.body || ''), at: Date.parse(it.created_at) || 0, num: +it.number || 0 };
   }
   async function fetchBox(repo, token, since) {
     var ctl = typeof AbortController === 'function' ? new AbortController() : null;
@@ -977,6 +991,7 @@ svg { display: block; }
       return { k: 'new', label: 'Cargo sin registrar todavía', detail: what + '. Toca «Leer todo el buzón ahora», más abajo.' };
     }
     var amt = p.amount ? money(p.amount) + '. ' : '';
+    if (p.kind === 'o') return { k: 'skip', label: 'Correo de otro asunto', detail: 'No es de bip!: no se registra.' };
     if (p.kind === 'd') return { k: 'skip', label: 'Aviso de abono', detail: amt + 'No se registra solo: anótalo con «Abono».' };
     if (p.kind === 'x') return { k: 'skip', label: 'Cargo rechazado o no realizado', detail: amt + 'No descuenta del saldo.' };
     if (p.kind === 'f') return { k: 'skip', label: 'Cargo en dólares', detail: 'Anótalo a mano con el monto en pesos que te cobraron.' };
@@ -1003,13 +1018,14 @@ svg { display: block; }
   }
   // Lee cada correo del buzón por separado: junta los cargos y cuenta los avisos que no descuentan
   function parseBox(msgs) {
-    var all = { found: [], abono: 0, no: 0, foreign: 0, abonoAt: 0 }, seen = {};
+    var all = { found: [], abono: 0, no: 0, foreign: 0, other: 0, abonoAt: 0 }, seen = {};
     msgs.forEach(function (m) {
       var p = parseMail(m.text, m.at);
       if (p.kind === 'c') { var f = settle(p, m.at, m.num); if (!seen[f.key]) { seen[f.key] = 1; all.found.push(f); } }
       else if (p.kind === 'd') { all.abono++; if (m.at > all.abonoAt) all.abonoAt = m.at; }
       else if (p.kind === 'x') all.no++;
       else if (p.kind === 'f') all.foreign++;
+      else if (p.kind === 'o') all.other++;
     });
     return all;
   }
@@ -1102,7 +1118,7 @@ svg { display: block; }
     syncing = false; syncErr = ''; lastTry = Date.now();
     openSheet('box');   // ahora muestra los datos para crear la automatización en Atajos
     render();
-    toast('Buzón conectado. ' + (r.added ? addedMsg(r, box) : box.found.length ? 'Sus cargos ya estaban registrados.' : 'Aún no tiene avisos: llegarán con tu próximo cargo.'), null, null, 6500);
+    toast('Buzón conectado. ' + (r.added ? addedMsg(r, box) : box.found.length ? 'Sus cargos ya estaban registrados.' : 'Aún no tiene avisos de bip!: llegarán con tu próximo cargo.'), null, null, 6500);
   }
 
   /* ---------- Vistas ---------- */
@@ -1163,8 +1179,8 @@ svg { display: block; }
     return '<section aria-label="Primeros pasos"><div class="sec-head"><h2>Primeros pasos</h2></div><ol class="steps">' +
       step(1, 'adjust', !!cfg.at, 'Ingresa el saldo inicial', 'El que muestra la app de Copec.') +
       (canSync ? step(2, 'box', !!prefs.repo, 'Conecta el buzón de avisos', 'Un repositorio privado de tu GitHub donde llegan los avisos de Copec Pay.') +
-                 step(3, 'box', false, 'Crea la automatización en Atajos', 'Envía cada correo de Copec Pay al buzón apenas llega a Mail.')
-               : step(2, 'paste', false, 'Pega tu primer aviso', 'Copia el texto del correo de Copec Pay y la app extrae los datos.')) +
+                 step(3, 'box', false, 'Crea la automatización en Atajos', 'Envía cada correo de bip! de Copec Pay al buzón apenas llega a Mail.')
+               : step(2, 'paste', false, 'Pega tu primer aviso', 'Copia el texto del correo de bip! de Copec Pay y la app extrae los datos.')) +
       '</ol></section>';
   }
 
@@ -1297,8 +1313,8 @@ svg { display: block; }
   function sheetPaste() {
     return '<div class="panel" id="sheet-form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">' +
       '<h2 id="sheet-title">Pegar un aviso</h2>' +
-      '<p class="sub">Copia el texto del correo de Copec Pay y pégalo aquí. La app extrae la fecha, el comercio y el monto del cargo.</p>' +
-      '<label class="field"><span>Texto del correo de Copec Pay</span><textarea id="f-paste" rows="4" autocomplete="off" spellcheck="false" placeholder="Pega aquí el correo completo, con el monto del cargo."></textarea></label>' +
+      '<p class="sub">Copia el texto del correo de bip! de Copec Pay y pégalo aquí. La app extrae la fecha, la hora y el monto del cargo.</p>' +
+      '<label class="field"><span>Texto del correo de Copec Pay</span><textarea id="f-paste" rows="4" autocomplete="off" spellcheck="false" placeholder="Tu compra en Carga bip! se realizó con éxito&#10;Monto $815&#10;N° transacción: 000000&#10;Fecha y hora: 2026-10-11 01:01:34"></textarea></label>' +
       '<ul class="found" id="f-found" hidden></ul>' +
       '<p class="err" id="f-err" role="alert" hidden></p>' +
       '<div class="stack"><button type="button" class="btn primary block" id="f-paste-add" data-act="paste-add" disabled>Agregar cargo</button>' +
@@ -1310,14 +1326,14 @@ svg { display: block; }
       var anyMail = items.some(function (m) { return m.src === 'mail'; });
       return '<div class="panel" id="sheet-form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">' +
         '<h2 id="sheet-title">Buzón y atajo</h2>' +
-        '<p class="sub">La app lee <strong>' + esc(prefs.repo) + '</strong> al abrirse y agrega los cargos que falten.' + (prefs.last ? ' Última lectura: ' + ago(prefs.last) + '.' : '') + '</p>' +
+        '<p class="sub">La app lee <strong>' + esc(prefs.repo) + '</strong> al abrirse y agrega los cargos de bip! que falten. Los correos de otro asunto se dejan fuera.' + (prefs.last ? ' Última lectura: ' + ago(prefs.last) + '.' : '') + '</p>' +
         '<p class="note">Los cargos se hacen de noche. Con el iPhone apagado, el correo llega al encenderlo y desbloquearlo: en ese momento Atajos lo envía al buzón. Cada cargo se registra con la fecha y la hora que trae el aviso, no con la hora en que llegó.</p>' +
         '<h3>Últimos correos del buzón</h3><div class="stack" id="f-mails"><p class="muted fine">Revisando el buzón…</p></div>' +
         '<details class="how"' + (anyMail ? '' : ' open') + '><summary>Automatización en Atajos</summary>' +
-        '<p class="sub">Se crea una sola vez. Envía al buzón cada correo de Copec Pay apenas llega a Mail.</p>' +
+        '<p class="sub">Se crea una sola vez. Envía al buzón cada correo de bip! de Copec Pay apenas llega a Mail.</p>' +
         '<ol class="guide">' +
         '<li><div>Abre <strong>Atajos</strong>, entra a <strong>Automatización</strong> y toca <strong>+</strong>. Elige <strong>Correo electrónico</strong> y en <strong>Remitente</strong> escribe el de Copec Pay.<br><button type="button" class="btn tonal small" data-act="copy-sender">Copiar remitente</button></div></li>' +
-        '<li><div>En <strong>Cuenta</strong> elige <strong>iCloud</strong>, que es donde llegan esos avisos. Deja vacíos <strong>Asunto</strong> y <strong>Destinatario</strong>.</div></li>' +
+        '<li><div>En <strong>El asunto contiene</strong> escribe <span class="mono">bip</span>: solo esos correos se envían al buzón. En <strong>Cuenta</strong> elige <strong>iCloud</strong>, que es donde llegan. Deja vacío <strong>Destinatario</strong>.</div></li>' +
         '<li><div>Marca <strong>Ejecutar inmediatamente</strong>, toca <strong>Siguiente</strong> y elige <strong>Nueva automatización en blanco</strong>.</div></li>' +
         '<li><div>Toca <strong>Agregar acción</strong>, busca «URL» y elige <strong>Obtener contenido de URL</strong>. En el campo de la URL pega la dirección del buzón.<br><button type="button" class="btn tonal small" data-act="copy-url">Copiar dirección</button></div></li>' +
         '<li><div>Toca <strong>Mostrar más</strong> y en <strong>Método</strong> elige <strong>POST</strong>.</div></li>' +
@@ -1331,7 +1347,7 @@ svg { display: block; }
     }
     return '<form class="panel" id="sheet-form" novalidate role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">' +
       '<h2 id="sheet-title">Conectar el buzón</h2>' +
-      '<p class="sub">El buzón es un repositorio privado de tu GitHub. Atajos deja ahí cada aviso de Copec Pay y la app lo lee al abrirse. Se configura una sola vez.</p>' +
+      '<p class="sub">El buzón es un repositorio privado de tu GitHub. Atajos deja ahí cada aviso de bip! de Copec Pay y la app lo lee al abrirse. Se configura una sola vez.</p>' +
       '<ol class="guide">' +
       '<li><div>En GitHub, crea un repositorio <strong>privado</strong> llamado <span class="mono">' + BOX + '</span>.</div></li>' +
       '<li><div>Crea un token en <strong>Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token</strong>.</div></li>' +
@@ -1444,10 +1460,11 @@ svg { display: block; }
     out.hidden = !f;
     btn.disabled = !isNew;
     if (!f && text.trim().length > 30) {
-      setErr(p.kind === 'd' ? 'Ese aviso es de un abono' + (p.amount ? ' por ' + money(p.amount) : '') + ': anótalo con «Abono».'
+      setErr(p.kind === 'o' ? 'Ese correo no es de bip!. La app registra solo los cargos de bip!, los que traen «bip» en el asunto.'
+        : p.kind === 'd' ? 'Ese aviso es de un abono' + (p.amount ? ' por ' + money(p.amount) : '') + ': anótalo con «Abono».'
         : p.kind === 'x' ? 'Ese aviso es de un cargo rechazado o que no se hizo: no descuenta del saldo.'
         : p.kind === 'f' ? 'Ese cargo está en dólares: anótalo a mano con el monto en pesos que te cobraron.'
-        : 'No reconozco un aviso de cargo en ese texto. Revisa que esté completo, con el monto.');
+        : 'No reconozco un aviso de cargo en ese texto. Pega el correo completo, desde «Tu compra en Carga bip!» hasta la fecha y hora.');
     }
   }
 

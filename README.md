@@ -1,13 +1,14 @@
 # Copec
 
-App personal para llevar el saldo de la cuenta Copec Pay: lee los avisos de cargo que Copec Pay envía por correo, guarda fecha, comercio y monto, descuenta cada cargo del saldo y permite anotar a mano los abonos.
+App personal para llevar el saldo de la cuenta Copec Pay: lee los avisos de compra en bip! que Copec Pay envía por correo, guarda fecha, hora y monto, descuenta cada cargo del saldo y permite anotar a mano los abonos.
 
 Es un registro personal. No es la app oficial de Copec ni está conectada a la cuenta.
 
 ## Qué hace
 
 - **Saldo de la cuenta**: se parte ingresando el saldo inicial, el que muestra la app de Copec, junto con la fecha y la hora de ese saldo. Desde ahí cada cargo lo descuenta y cada abono lo suma. Con **Ajustar** se vuelve a cuadrar cuando haga falta.
-- **Lectura automática**: una automatización de Atajos envía cada correo de Copec Pay, apenas llega a Mail, a un buzón privado en GitHub. La app lee ese buzón al abrirse y agrega solo los cargos que falten. Un mismo aviso nunca se registra dos veces.
+- **Lectura automática**: una automatización de Atajos envía cada correo de bip! de Copec Pay, apenas llega a Mail, a un buzón privado en GitHub. La app lee ese buzón al abrirse y agrega solo los cargos que falten. Un mismo aviso nunca se registra dos veces.
+- **Solo bip!**: cuentan únicamente los correos que traen «bip» en el asunto. Los demás correos de Copec Pay quedan fuera.
 - **Cargos de la noche**: los cargos automáticos se hacen de noche y su correo llega recién al encender el iPhone. La app registra cada cargo con la fecha y la hora que trae el aviso, no con la hora en que llegó el correo. Ver [Cargos de la noche](#cargos-de-la-noche).
 - **Abono**: anota a mano un abono con monto, descripción, fecha y hora. La misma hoja permite anotar un cargo que no llegó por correo.
 - **Pegar un aviso**: alternativa sin configuración. Se copia el texto del correo, se pega en la app y esta extrae los datos.
@@ -24,7 +25,7 @@ La app lo tiene en cuenta de tres maneras:
 2. **El saldo de partida tiene fecha y hora.** Solo descuentan los cargos posteriores a ese momento. Si defines el saldo en la mañana, mirando la app de Copec, los cargos de esa madrugada ya están incluidos en él y no se descuentan otra vez, aunque su aviso llegue después. Si lo miraste la noche anterior, indica esa fecha y hora, y los cargos de la noche sí se descuentan.
 3. **Con la app abierta, el buzón se relee solo.** Los correos de la noche llegan de a poco al encender el iPhone. La app relee el buzón cada minuto durante los primeros diez minutos y después cada cinco, así los cargos aparecen sin tocar nada.
 
-Cuando el aviso no trae todos los datos:
+El correo de bip! trae siempre la fecha y la hora del cargo. Si alguna vez llegara incompleto, esto es lo que se registra:
 
 | El aviso trae | Qué se registra |
 | --- | --- |
@@ -35,32 +36,50 @@ Cuando el aviso no trae todos los datos:
 
 ## Formato del aviso
 
-Los avisos llegan desde `mensajeria@copecpay.cl`. El lector no depende de una frase exacta: de cada correo busca el monto, el comercio, la fecha y la hora, vengan en una oración o como una lista de datos. Por ejemplo:
+Los avisos llegan desde `mensajeria@copecpay.cl`. Este es el correo de una compra en bip!:
 
-> Se realizó un cargo por $5.990 en NETFLIX.COM el 10/10/2026 a las 03:12.
+```
+Tu compra en Carga bip! se realizó con éxito
+Monto
+$815
+Cuenta origen:
+Cuenta Vista
+****0000
+Copec Pay
+N° transacción:
+000000
+Fecha y hora:
+2026-10-11 01:01:34
+```
 
-> Monto: $5.990 · Comercio: NETFLIX.COM · Fecha: 10/10/2026 · Hora: 03:12
+De cada aviso la app toma:
 
-Funciona con el texto plano o con el correo en HTML, y también si llega codificado (con `=C3=A9` y líneas cortadas con `=`, o en base64).
+- el **monto** (`$815`), que es lo que se descuenta del saldo;
+- la **fecha y la hora** del cargo (`2026-10-11 01:01:34`), que son las que se registran;
+- el **número de transacción**, que identifica el cargo: el mismo correo nunca se registra dos veces, y dos viajes del mismo valor en el mismo minuto son dos cargos distintos;
+- el **comercio** (`Carga bip!`), que queda como nombre del movimiento.
 
-- El monto es el que acompaña al cargo. El saldo disponible, los topes y las promociones que aparezcan en el mismo correo no se toman como monto.
-- El comercio se toma de un rótulo (`Comercio:`, `Establecimiento:`, `Glosa:`…) o de la oración (`… en NETFLIX.COM el …`). Si el aviso no lo trae, el cargo queda como «Cargo automático» y se le puede poner nombre.
-- La fecha se reconoce como `10/10/2026`, `10-10-26`, `2026-10-10` o `10 de octubre de 2026`.
+Funciona con el texto plano o con el correo en HTML, con los datos en líneas separadas o en una sola, y también si el correo llega codificado (con `=C3=A9` y líneas cortadas con `=`, o en base64).
 
-No se registran solos:
+### Solo los correos de bip!
 
-- **Avisos de abono** (abono, depósito, transferencia recibida, devolución, carga de saldo). Los abonos se anotan a mano con **Abono**; la app avisa cuando llega uno.
-- **Cargos rechazados** o que no se hicieron: no descuentan.
-- **Cargos en dólares**: se anotan a mano con el monto en pesos que se cobró.
-- Correos que no son un aviso de cargo.
+La app considera únicamente los correos que traen «bip» en el asunto. El filtro se aplica dos veces:
 
-En **Buzón y atajo** se ve qué hizo la app con cada correo y el texto de los que no reconoció. Con ese texto se puede afinar el lector: los patrones están al comienzo del código de `index.html`, en la sección «Lector de los avisos de Copec Pay». Cuando el lector cambia, se sube el número `READER` y la app repasa el buzón completo una vez.
+1. **En Atajos**, con la condición **El asunto contiene** `bip`: los correos de otro asunto ni siquiera se envían al buzón.
+2. **En la app**, que revisa el encabezado del aviso (lo que va antes del monto, donde está el asunto: «Tu compra en Carga bip!…»). Si ahí no dice «bip», el correo se deja fuera aunque haya llegado al buzón. Una mención de bip! en la letra chica de otro correo no cuenta.
+
+Tampoco se registran solos:
+
+- una **compra en bip! que no se pudo realizar**: no descuenta;
+- una **devolución o abono** relacionado con bip!: se anota a mano con **Abono**; la app avisa cuando llega uno.
+
+En **Buzón y atajo** se ve qué hizo la app con cada correo y el texto de los que no reconoció. El lector está al comienzo del código de `index.html`, en la sección «Lector de los avisos de Copec Pay»; además del formato de arriba, tolera variantes (fecha como `10/10/2026`, datos con rótulos como `Comercio:`), por si Copec Pay cambia el correo. Cuando el lector cambia, se sube el número `READER` y la app repasa el buzón completo una vez.
 
 ## Capturar los correos de la app Mail
 
 iOS no permite que una app web lea el correo ni reciba datos de otras apps mientras está cerrada. Para que los cargos aparezcan sin hacer nada, cada aviso pasa por un buzón en internet:
 
-1. El correo de Copec Pay llega a Mail.
+1. El correo de bip! de Copec Pay llega a Mail.
 2. Una automatización de **Atajos** lo envía al buzón: un repositorio **privado** de GitHub, donde cada correo queda como un *issue*.
 3. La app lee el buzón al abrirse (y mientras está abierta) y agrega los cargos nuevos.
 
@@ -85,7 +104,7 @@ El buzón de Copec es propio (`copec-avisos`) y distinto del de FAN y Master, pa
 
 1. Abre **Atajos**, entra a **Automatización** y toca **+**.
 2. Elige **Correo electrónico** y en **Remitente** escribe `mensajeria@copecpay.cl`.
-3. En **Cuenta** elige **iCloud**, que es donde llegan esos avisos. Deja vacíos **Asunto** y **Destinatario**.
+3. En **El asunto contiene** escribe `bip`: solo esos correos se envían al buzón. En **Cuenta** elige **iCloud**, que es donde llegan. Deja vacío **Destinatario**.
 4. Marca **Ejecutar inmediatamente**, toca **Siguiente** y elige **Nueva automatización en blanco**.
 5. Toca **Agregar acción**, busca «URL» y elige **Obtener contenido de URL**. En la URL pega `https://api.github.com/repos/tu-usuario/copec-avisos/issues`.
 6. Toca **Mostrar más** y en **Método** elige **POST**.
@@ -106,8 +125,8 @@ El buzón de Copec es propio (`copec-avisos`) y distinto del de FAN y Master, pa
 
 1. Toca **Actualizar**.
 2. Abre **Buzón y atajo** y mira **Últimos correos del buzón**. Ahí están los últimos correos que recibió el buzón, del más reciente al más antiguo, con la hora en que llegaron y lo que la app hizo con cada uno.
-3. Si el correo no está en la lista, no llegó al buzón: Atajos no se ejecutó o GitHub rechazó el envío. Un correo que Atajos no envió en su momento no llega después: ese cargo se agrega con **Pegar un aviso**.
-4. Si está en la lista, la app dice por qué no lo registró: era un abono, un cargo rechazado, un cargo en dólares, un cargo que eliminaste o un correo que no reconoce como aviso de cargo. En ese último caso muestra el texto del correo.
+3. Si el correo no está en la lista, no llegó al buzón: su asunto no decía «bip», Atajos no se ejecutó o GitHub rechazó el envío. Un correo que Atajos no envió en su momento no llega después: ese cargo se agrega con **Pegar un aviso**.
+4. Si está en la lista, la app dice por qué no lo registró: era un correo de otro asunto, un abono, un cargo rechazado, un cargo que eliminaste o un correo de bip! que no reconoce como aviso de cargo. En ese último caso muestra el texto del correo.
 
 El botón **Copiar este detalle** copia la lista con el texto de cada correo, para revisar un aviso que la app no reconoce. **Leer todo el buzón ahora** repasa el buzón completo y no solo los correos nuevos.
 
