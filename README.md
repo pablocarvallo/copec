@@ -14,6 +14,7 @@ Es un registro personal. No es la app oficial de Copec ni está conectada a la c
 - **Pegar un aviso**: alternativa sin configuración. Se copia el texto del correo, se pega en la app y esta extrae los datos.
 - **Movimientos**: todos los cargos y abonos, con el saldo que dejó cada uno. Se pueden filtrar (todos, cargos, abonos) y ordenar. Al tocar un movimiento se corrige, se renombra o se elimina. En un cargo leído de un aviso se puede ver el texto original del correo.
 - **Widget**: el saldo y los tres últimos cargos en la pantalla de inicio o la pantalla bloqueada, con la app Scriptable. Ver [Widget en la pantalla de inicio](#widget-en-la-pantalla-de-inicio).
+- **Panel de las cuatro cuentas**: un widget grande con Copec, FAN, Master y LiderBCI, con los colores de Copec. Ver [Panel con las cuatro cuentas](#panel-con-las-cuatro-cuentas).
 - **Datos y respaldo**: copia todos los datos como texto y los restaura desde ahí.
 
 ## Cargos de la noche
@@ -152,6 +153,33 @@ Cómo funciona:
 - También sirve en tamaño pequeño y en la pantalla bloqueada (rectangular).
 - **Desactivar el widget**, en la misma sección de la app, deja de publicar y borra lo publicado.
 
+## Panel con las cuatro cuentas
+
+Un widget grande, con los colores de Copec, que reúne las cuatro apps domésticas. De cada cuenta muestra el total y los tres últimos movimientos:
+
+| Cuenta | Total que muestra |
+| --- | --- |
+| Copec | Saldo disponible de la cuenta Copec Pay |
+| FAN | Saldo disponible de la cuenta bancaria |
+| Master | Deuda a pagar este mes (sin las cuotas que vencen después) |
+| LiderBCI | Total del periodo de facturación (LiderBCI no lleva cupo ni saldo) |
+
+Instalación:
+
+1. Revisa que en Scriptable estén los scripts de los widgets de Copec, FAN, Master y LiderBCI. No hace falta que estén en la pantalla de inicio.
+2. En Copec, entra a **Buzón y atajo → Panel con las cuatro cuentas** y toca **Copiar el script del panel**.
+3. Abre Scriptable, toca **+** y pega el script. Nómbralo **Cuentas** y ejecútalo con **▶**: debe mostrar las cuatro cuentas. Si falta alguna, avisa cuál.
+4. En la pantalla de inicio, mantén presionado un espacio vacío, toca **Editar → Agregar widget**, busca **Scriptable** y elige el tamaño **grande**.
+5. Mantén presionado el widget nuevo, toca **Editar widget** y en **Script** elige **Cuentas**.
+
+Cómo funciona:
+
+- El script del panel no lleva tokens. Busca en Scriptable los scripts de los cuatro widgets (los reconoce por su contenido, no por su nombre) y toma de ellos el buzón y el token. Lo encontrado queda guardado en el llavero del iPhone, por si después se borra un script. Si un script trae un token nuevo, el panel usa ese.
+- Cada cuenta se calcula igual que en su propio widget: lo que publicó la app más los avisos que llegaron al buzón después. Copec descuenta los cargos de bip! de la noche, FAN las compras con cargo a la cuenta y Master suma las compras con la tarjeta.
+- Si una cuenta no se puede leer, muestra lo último que se leyó, marcado «sin conexión», y las demás siguen al día.
+- En iPhone el tamaño grande es el más grande que permite iOS; ningún widget ocupa la pantalla completa. En tamaño mediano muestra los cuatro totales con el último movimiento, en pequeño solo los totales y en la pantalla bloqueada los cuatro totales en dos líneas.
+- El lector de Copec se copia en el panel con `python3 widget/armar-widget.py`, igual que en el widget de Copec. Los lectores de FAN y Master están copiados de sus widgets: si alguno cambia, hay que copiarlo también en `widget/panel-widget.js`.
+
 ## Instalar en el iPhone
 
 1. En GitHub, ve a **Settings → Pages** y publica la rama `main` desde la raíz (`/`). La app queda en `https://pablocarvallo.github.io/copec/`.
@@ -172,7 +200,8 @@ Se abre como app independiente, con su icono, y funciona sin conexión.
 | `icons/apple-touch-icon.png` | Icono de 180 px para la pantalla de inicio del iPhone |
 | `icons/icon-192.png`, `icons/icon-512.png`, `icons/icon-1024.png` | Iconos del manifiesto y archivo de alta resolución |
 | `widget/copec-widget.js` | Script del widget para la app Scriptable (la app lo entrega completo con el botón de copiar) |
-| `widget/armar-widget.py` | Copia el lector de `index.html` en el script del widget y guarda el script dentro de la app |
+| `widget/panel-widget.js` | Script del panel con las cuatro cuentas para Scriptable (la app lo entrega con «Copiar el script del panel») |
+| `widget/armar-widget.py` | Copia el lector de `index.html` en los scripts del widget y del panel, y guarda ambos scripts dentro de la app |
 
 ## Datos
 
