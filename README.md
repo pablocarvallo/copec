@@ -13,6 +13,7 @@ Es un registro personal. No es la app oficial de Copec ni está conectada a la c
 - **Abono**: anota a mano un abono con monto, descripción, fecha y hora. La misma hoja permite anotar un cargo que no llegó por correo.
 - **Pegar un aviso**: alternativa sin configuración. Se copia el texto del correo, se pega en la app y esta extrae los datos.
 - **Movimientos**: todos los cargos y abonos, con el saldo que dejó cada uno. Se pueden filtrar (todos, cargos, abonos) y ordenar. Al tocar un movimiento se corrige, se renombra o se elimina. En un cargo leído de un aviso se puede ver el texto original del correo.
+- **Widget**: el saldo y los tres últimos cargos en la pantalla de inicio o la pantalla bloqueada, con la app Scriptable. Ver [Widget en la pantalla de inicio](#widget-en-la-pantalla-de-inicio).
 - **Datos y respaldo**: copia todos los datos como texto y los restaura desde ahí.
 
 ## Cargos de la noche
@@ -130,6 +131,27 @@ El buzón de Copec es propio (`copec-avisos`) y distinto del de FAN y Master, pa
 
 El botón **Copiar este detalle** copia la lista con el texto de cada correo, para revisar un aviso que la app no reconoce. **Leer todo el buzón ahora** repasa el buzón completo y no solo los correos nuevos.
 
+## Widget en la pantalla de inicio
+
+Muestra el saldo y los tres últimos cargos de bip!. Una app web no puede crear widgets en iPhone, así que el widget se hace con **Scriptable**, una app gratuita que dibuja widgets a partir de un script.
+
+1. Instala **Scriptable** desde el App Store.
+2. En Copec, entra a **Buzón y atajo → Widget en la pantalla de inicio** y toca **Copiar el script del widget**. El script va completo, con el buzón y el token.
+3. Abre Scriptable, toca **+** y pega el script. Toca el título de arriba, nómbralo **Copec** y ejecútalo con **▶**: debe mostrar el saldo.
+4. En la pantalla de inicio, mantén presionado un espacio vacío, toca **Editar → Agregar widget**, busca **Scriptable** y elige el tamaño mediano.
+5. Mantén presionado el widget nuevo, toca **Editar widget** y en **Script** elige **Copec**.
+
+Cómo funciona:
+
+- Al activarlo, la app publica el saldo y los últimos cargos en un hito (*milestone*) del repositorio privado del buzón. El script los lee y les descuenta los cargos de bip! que llegaron al buzón después.
+- Así el widget se pone al día solo en la mañana: cuando Atajos envía los correos de la noche, el widget descuenta esos cargos aunque no abras la app. Sigue las mismas reglas de la app: solo correos de bip!, cada cargo una vez y nada anterior al saldo de partida.
+- El widget lee los correos con el mismo lector de la app, copiado tal cual en el script. Si se cambia el lector, se vuelve a armar el script con `python3 widget/armar-widget.py` y se copia de nuevo en Scriptable.
+- iOS decide cada cuánto actualiza el widget, normalmente cada varios minutos. No es instantáneo.
+- Los abonos y los ajustes de saldo solo existen dentro de la app: el widget los refleja después de abrirla.
+- Al tocar el widget se abre Scriptable, no la app: iOS no permite abrir una app web instalada desde un widget.
+- También sirve en tamaño pequeño y en la pantalla bloqueada (rectangular).
+- **Desactivar el widget**, en la misma sección de la app, deja de publicar y borra lo publicado.
+
 ## Instalar en el iPhone
 
 1. En GitHub, ve a **Settings → Pages** y publica la rama `main` desde la raíz (`/`). La app queda en `https://pablocarvallo.github.io/copec/`.
@@ -149,6 +171,8 @@ Se abre como app independiente, con su icono, y funciona sin conexión.
 | `icons/icon.svg` | Icono con esquinas redondeadas (favicon) |
 | `icons/apple-touch-icon.png` | Icono de 180 px para la pantalla de inicio del iPhone |
 | `icons/icon-192.png`, `icons/icon-512.png`, `icons/icon-1024.png` | Iconos del manifiesto y archivo de alta resolución |
+| `widget/copec-widget.js` | Script del widget para la app Scriptable (la app lo entrega completo con el botón de copiar) |
+| `widget/armar-widget.py` | Copia el lector de `index.html` en el script del widget y guarda el script dentro de la app |
 
 ## Datos
 
@@ -156,7 +180,7 @@ Los movimientos y el saldo quedan en el `localStorage` del navegador, en el disp
 
 - `copec-movimientos`: cada movimiento con tipo (`c` cargo, `d` abono), fecha (`date`), hora (`time`), descripción (`desc`), monto en pesos (`amount`) y origen (`mail` o `manual`). Los cargos leídos de un aviso guardan además la clave que evita duplicados (`key`), cuándo llegó el aviso al buzón (`rcv`), si el aviso venía sin hora (`nt`) o sin fecha (`est`) y el comienzo del texto del correo (`raw`).
 - `copec-cuenta`: el saldo de partida (`amount`), desde cuándo rige (`at`) y los avisos eliminados a propósito (`ignored`).
-- `copec-preferencias`: orden del listado, repositorio y token del buzón, y momento de la última lectura.
+- `copec-preferencias`: orden del listado, repositorio y token del buzón, momento de la última lectura y si el widget está activado.
 
 El saldo que se muestra es el saldo de partida más los movimientos posteriores a su fecha y hora. Los movimientos anteriores quedan como historial y no lo cambian.
 

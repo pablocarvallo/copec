@@ -355,6 +355,10 @@ svg { display: block; }
   var POLL_SLOW = 5 * 60 * 1000;
   var POLL_WINDOW = 10 * 60 * 1000;
   var READER = 2;                      // versión del lector de avisos: cuando cambia, el buzón se relee completo una vez
+  var WIDGET_TITLE = 'Copec · widget';  // hito del buzón donde se publica el saldo para el widget
+  // Script del widget para la app Scriptable (el mismo de widget/copec-widget.js, armado con widget/armar-widget.py);
+  // al copiarlo se completa con el buzón y el token
+  var WIDGET_CODE = "// Variables used by Scriptable.\n// These must be at the very top of the file. Do not edit.\n// icon-color: deep-blue; icon-glyph: bus;\n\n// Copec · widget para la pantalla de inicio del iPhone (app Scriptable)\n//\n// Muestra el saldo de la cuenta Copec Pay y los tres últimos cargos de bip!. Parte del saldo que la app Copec\n// publica en el buzón (el repositorio privado de GitHub) y le descuenta los cargos que llegaron después, aunque no\n// hayas abierto la app: en la mañana, apenas Atajos envía los correos de la noche, el widget ya los descuenta.\n// No copies este archivo a mano: usa el botón «Copiar el script del widget» de la app Copec, que completa las dos\n// líneas siguientes con tu repositorio y tu token.\nconst REPO = '__REPO__';\nconst TOKEN = '__TOKEN__';\n\nconst API = 'https://api.github.com/repos/' + REPO;\nconst MS_TITLE = 'Copec · widget';\nconst MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];\nconst MAX_AMOUNT = 9999999999;\n\n/* ---------- Formatos ---------- */\nfunction pad(n) { return (n < 10 ? '0' : '') + n; }\nfunction dayKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }\nfunction hm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }\nfunction validDate(k) {\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(k))) return false;\n  const p = k.split('-'), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));\n  return d.getUTCFullYear() === +p[0] && d.getUTCMonth() === +p[1] - 1 && d.getUTCDate() === +p[2];\n}\nfunction clean(s) { return String(s == null ? '' : s).replace(/\\s+/g, ' ').trim().slice(0, 60); }\nfunction dots(n) { return String(Math.round(Math.abs(n))).replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.'); }\nfunction money(n) { return (n < 0 ? '−' : '') + '$' + dots(n); }\nfunction dayLabel(k) {\n  const t = new Date(), y = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 1);\n  if (k === dayKey(t)) return 'hoy';\n  if (k === dayKey(y)) return 'ayer';\n  const p = k.split('-');\n  return (+p[2]) + ' ' + MES[+p[1] - 1];\n}\nfunction atMs(at) { return new Date(+at.slice(0, 4), +at.slice(5, 7) - 1, +at.slice(8, 10), +at.slice(11, 13), +at.slice(14, 16)).getTime(); }\n\n/* ---------- Lector de los avisos: el mismo de la app Copec, copiado tal cual ---------- */\n/* LECTOR:INICIO */\n/* ---------- Lector de los avisos de Copec Pay ---------- */\n// El lector no depende de una frase exacta. De cada correo busca el monto, el comercio, la fecha y la hora del\n// cargo, vengan en una oración («…un cargo por $5.990 en NETFLIX el 10/10/2026 a las 03:12») o como una lista\n// de datos («Monto: $5.990 · Comercio: NETFLIX · Fecha: 10/10/2026 · Hora: 03:12»).\n//\n// La fecha y la hora que se guardan son las del cargo, no las de llegada del correo: los cargos se hacen de noche\n// y el correo llega recién al encender el iPhone. Si el aviso no trae la hora o la fecha, ver «settle».\n\n// Si Atajos entrega el correo mal decodificado, «é» llega como «Ã©» y el espacio duro como «Â ». Esto lo repara\n// letra por letra, sin tocar el texto que viene bien.\nvar CP1252 = { 0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88, 0x2030: 0x89, 0x0160: 0x8a,\n  0x2039: 0x8b, 0x0152: 0x8c, 0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02dc: 0x98,\n  0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b, 0x0153: 0x9c, 0x017e: 0x9e, 0x0178: 0x9f };\nfunction contByte(ch) { var c = ch.charCodeAt(0); if (c > 0xff) c = CP1252[c] || 0; return c >= 0x80 && c <= 0xbf ? c : -1; }\nfunction demojibake(s) {\n  if (!/[ÂÃâ]/.test(s)) return s;\n  return s.replace(/[ÂÃ][^\\u0000-\\u007f]|â[^\\u0000-\\u007f]{2}/g, function (seq) {\n    var b1 = contByte(seq.charAt(1)), b2 = seq.length > 2 ? contByte(seq.charAt(2)) : 0;\n    if (b1 < 0 || b2 < 0) return seq;\n    return String.fromCharCode(seq.length > 2 ? (0x2 << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f) : ((seq.charCodeAt(0) & 0x1f) << 6) | (b1 & 0x3f));\n  });\n}\n// Texto a bytes UTF-8 y de vuelta, escrito a mano: el mismo lector corre en el widget de Scriptable, sin las\n// funciones del navegador (TextDecoder, atob).\nfunction utf8Bytes(str, out) {\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c <= 0xdbff && i + 1 < str.length) {\n      var d = str.charCodeAt(i + 1);\n      if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i++; }\n    }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | c >> 6, 0x80 | c & 63);\n    else if (c < 0x10000) out.push(0xe0 | c >> 12, 0x80 | c >> 6 & 63, 0x80 | c & 63);\n    else out.push(0xf0 | c >> 18, 0x80 | c >> 12 & 63, 0x80 | c >> 6 & 63, 0x80 | c & 63);\n  }\n  return out;\n}\nfunction utf8Text(b) {   // null si los bytes no son UTF-8 válido\n  var out = '', i = 0;\n  while (i < b.length) {\n    var c = b[i++];\n    if (c < 0x80) { out += String.fromCharCode(c); continue; }\n    var n = c >= 0xc2 && c < 0xe0 ? 1 : c >= 0xe0 && c < 0xf0 ? 2 : c >= 0xf0 && c < 0xf5 ? 3 : 0;\n    if (!n || i + n > b.length) return null;\n    var cp = c & (n === 1 ? 0x1f : n === 2 ? 0x0f : 0x07);\n    for (var k = 0; k < n; k++) { var x = b[i++]; if ((x & 0xc0) !== 0x80) return null; cp = cp << 6 | x & 0x3f; }\n    if (cp >= 0x10000) { cp -= 0x10000; out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff)); }\n    else out += String.fromCharCode(cp);\n  }\n  return out;\n}\nvar CP1252_BACK = {};\nObject.keys(CP1252).forEach(function (k) { CP1252_BACK[CP1252[k]] = +k; });\n// Bytes a texto: UTF-8 si es válido; si no, la codificación habitual de los correos en español (Windows-1252)\nfunction bytesToText(bytes) {\n  var t = utf8Text(bytes);\n  if (t !== null) return t;\n  var out = '';\n  for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(CP1252_BACK[bytes[i]] || bytes[i]);\n  return out;\n}\nvar B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\nfunction b64Bytes(str) {\n  var out = [], acc = 0, bits = 0;\n  for (var i = 0; i < str.length; i++) {\n    var v = B64.indexOf(str.charAt(i));\n    if (v < 0) continue;\n    acc = (acc << 6 | v) & 0xffffff; bits += 6;\n    if (bits >= 8) { bits -= 8; out.push(acc >> bits & 0xff); }\n  }\n  return out;\n}\n// Un correo puede llegar tal como viaja por la red: con «=C3=A9» y líneas cortadas con «=», o entero en base64\nfunction unwrapMail(raw) {\n  var src = String(raw == null ? '' : raw), out = [];\n  if (/=\\r?\\n|=[0-9A-Fa-f]{2}/.test(src)) {\n    var q = src.replace(/=\\r?\\n/g, ''), bytes = [], last = 0, re = /(?:=[0-9A-Fa-f]{2})+/g, m;\n    while ((m = re.exec(q))) {\n      utf8Bytes(q.slice(last, m.index), bytes);\n      m[0].slice(1).split('=').forEach(function (h) { bytes.push(parseInt(h, 16)); });\n      last = re.lastIndex;\n    }\n    utf8Bytes(q.slice(last), bytes);\n    out.push(bytesToText(bytes));\n  }\n  var b = src.replace(/\\s+/g, '');\n  if (b.length >= 80 && b.length % 4 === 0 && /^[A-Za-z0-9+\\/]+={0,2}$/.test(b)) out.push(bytesToText(b64Bytes(b)));\n  return out;\n}\n// Entidades de HTML («&eacute;», «&#36;»): las habituales en un correo en español\nvar ENT = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '\"', apos: \"'\", dollar: '$', num: '#', percnt: '%', excl: '!', quest: '?', ast: '*',\n  colon: ':', semi: ';', comma: ',', period: '.', sol: '/', lpar: '(', rpar: ')', deg: '°', ordm: 'º', ordf: 'ª', iexcl: '¡', iquest: '¿',\n  laquo: '«', raquo: '»', ndash: '–', mdash: '—', hellip: '…', bull: '•', middot: '·', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',\n  euro: '€', copy: '©', reg: '®', trade: '™', times: '×', shy: '', zwnj: '', zwj: '', ntilde: 'ñ', Ntilde: 'Ñ', uuml: 'ü', Uuml: 'Ü' };\n'aeiouAEIOU'.split('').forEach(function (v, i) { ENT[v + 'acute'] = 'áéíóúÁÉÍÓÚ'.charAt(i); });\nfunction decodeEntities(str) {\n  return str.replace(/&(#x?[0-9a-f]+|[a-z]+[0-9]*);/gi, function (all, e) {\n    if (e.charAt(0) === '#') {\n      var c = e.charAt(1).toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);\n      try { return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : ' '; } catch (er) { return ' '; }\n    }\n    return Object.prototype.hasOwnProperty.call(ENT, e) ? ENT[e] : all;\n  });\n}\n// Texto del correo sin etiquetas. Cada bloque del correo (párrafo, fila o celda de una tabla) queda en su propia línea.\nfunction plainText(s) {\n  s = String(s == null ? '' : s);\n  if (s.length > 4000000) s = s.slice(-4000000);\n  s = demojibake(s);\n  if (s.normalize) s = s.normalize('NFC');   // «é» siempre como una sola letra, venga como venga en el correo\n  if (/<[a-z!\\/][^>]*>/i.test(s)) {\n    s = s.replace(/<(script|style|head|title)\\b[\\s\\S]*?<\\/\\1>/gi, ' ')\n      .replace(/<(?:br|hr)\\b[^>]*>|<\\/(?:p|div|tr|li|h[1-6]|table|ul|ol|td|th|section|article)>/gi, '\\n')\n      .replace(/<[^>]+>/g, ' ');\n  }\n  if (/&[#a-z0-9]+;/i.test(s)) s = decodeEntities(s);\n  return s.replace(/[   ​‌‍﻿]/g, ' ');\n}\n\nvar LETTER = 'a-záéíóúüñ';\n// La app registra solo los correos de bip!: los que traen «bip» en el asunto («Tu compra en Carga bip! se realizó con éxito»)\nvar RE_BIP = new RegExp('(?:^|[^' + LETTER + '0-9])bip(?![' + LETTER + '0-9])', 'i');\n// Palabras de un movimiento que saca dinero de la cuenta\nvar RE_CARGO = new RegExp('(?:^|[^' + LETTER + '])(?:compra|cargo|carg[oó]|pago|pag[oó]|pagaste|pagamos|cobr|transacci|suscripci|d[ée]bit|descont|recarga|carga|giro|retir|transfer|consumo|movimiento|operaci[oó]n)', 'i');\n// Un cargo que no se hizo: no descuenta\nvar RE_NO = /rechazad|declinad|denegad|fallid|no\\s+(?:fue\\s+|ha\\s+sido\\s+|pudo\\s+ser\\s+|se\\s+pudo\\s+|se\\s+ha\\s+podido\\s+|pudimos\\s+|hemos\\s+podido\\s+)?(?:aprobad|realizad|realizar|procesad|procesar|autorizad|complet|efectu)|saldo\\s+insuficiente|sin\\s+saldo|fondos\\s+insuficientes/i;\n// Dinero que entra: los abonos se anotan a mano, así que estos avisos no se registran solos\nvar RE_IN = new RegExp('(?:^|[^' + LETTER + '])(?:abono|abonamos|abonad[oa]|abonaron|abonaste|dep[oó]sit|recibiste|has\\\\s+recibido|te\\\\s+transfiri|transferencia\\\\s+recibida|devoluci[oó]n|devolvimos|reembols|revers[oa]|anulaci[oó]n|anulad[oa]|cargaste\\\\s+(?:saldo|dinero)|carga\\\\s+de\\\\s+(?:saldo|dinero))', 'i');\nvar MONEY_SRC = '(US\\\\$|USD|U\\\\$S|CLP|\\\\$)\\\\s{0,2}(\\\\d{1,3}(?:[.,]\\\\d{3})+|\\\\d+)(?:[.,]\\\\d{1,2})?(?!\\\\d)|(\\\\d{1,3}(?:[.,]\\\\d{3})+|\\\\d+)(?:[.,]\\\\d{1,2})?\\\\s{0,2}(pesos|CLP|USD|d[oó]lares)(?![' + LETTER + '])';\n// Montos que no son el del cargo: el saldo que quedó, un tope, una promoción\nvar RE_AUX = /(?:saldo|disponible|cupo|l[ií]mite|tope|m[ií]nim[oa]|m[aá]xim[oa]|descuento|dcto|ahorr[a-z]*|gana[a-z]*|premio|hasta|desde|comisi[oó]n)[^$]{0,24}$/i;\nvar MONTHS = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12 };\nvar LABELS = ['nombre\\\\s+(?:del?\\\\s+)?comercio', 'comercio', 'establecimiento', 'tienda', 'destinatario', 'beneficiario', 'glosa', 'descripci[oó]n', 'detalle', 'concepto', 'servicio', 'empresa', 'local', 'lugar', 'motivo'];\nvar STRONG = 6;   // los seis primeros rótulos se aceptan también sin dos puntos («Comercio NETFLIX»)\n// Dónde termina un nombre dentro de una lista de datos: en el rótulo siguiente, un monto o una fecha. Los rótulos se\n// reconocen en minúsculas o con mayúscula inicial («Fecha»), no en mayúsculas completas: así «BANCO ESTADO» queda entero.\nvar RE_STOP = new RegExp('\\\\s+(?:' + ['monto', 'total', 'valor', 'importe', 'fecha', 'hora', 'tarjeta', 'nro\\\\.?', 'n[uú]mero', 'c[oó]digo', 'operaci[oó]n',\n  'autorizaci[oó]n', 'cuotas?', 'tipo', 'medio', 'saldo', 'estado', 'rut', 'cuenta', 'comercio', 'detalle'].map(function (w) {\n  return '[' + w.charAt(0) + w.charAt(0).toUpperCase() + ']' + w.slice(1);\n}).join('|') + '|[Nn][°º])(?![' + LETTER + 'A-ZÁÉÍÓÚÜÑ])|\\\\s*(?:US\\\\$|\\\\$)\\\\s?\\\\d|\\\\s+\\\\d{1,2}[\\\\/.\\\\-]\\\\d{1,2}[\\\\/.\\\\-]\\\\d{2,4}|\\\\s+[|·•]\\\\s+');\n// Dónde termina el nombre de un comercio dentro de una oración. Las palabras van en minúsculas a propósito:\n// los comercios suelen venir en mayúsculas («PIZZA CON TODO») y así no se cortan.\nvar NAME_END = '(?=\\\\s+(?:el|con|por|a\\\\s+las|fecha|de\\\\s+fecha|del\\\\s+d[ií]a|mediante|desde|usando|fue|ha|han|se|est[aá]|qued[oó]|ya|que|realizad[oa]|aprobad[oa]|exitos[oa])\\\\s|\\\\s*[.;,](?:\\\\s|$)|\\\\s*$|\\\\s+(?:US\\\\$|\\\\$)\\\\s?\\\\d|\\\\s+\\\\d{1,2}[\\\\/.\\\\-]\\\\d{1,2}[\\\\/.\\\\-]\\\\d{2,4})';\n// «en tu cuenta», «en la app», «en cuotas»: no son un comercio. Los nombres en mayúsculas («LA FETE») sí pasan.\nvar RE_NOT_NAME = /^(?:tu|tus|su|sus|la|las|el|los|mi|un|una|nuestr[a-z]*|l[ií]nea|cuotas?|pesos|d[oó]lares|caso|www|http|efectivo|total|forma|cualquier|est[ea]s?|breve|unos|minutos|adelante|cuanto|relaci[oó]n)(?:\\s|$)/;\n\nfunction findAmount(flat) {\n  var re = new RegExp(MONEY_SRC, 'gi'), m, main = [], aux = [];\n  while ((m = re.exec(flat))) {\n    var cur = (m[1] || m[4] || '$').toUpperCase();\n    var amount = parseInt((m[2] || m[3]).replace(/[.,]/g, ''), 10);\n    if (!(amount > 0) || amount > MAX_AMOUNT) continue;\n    var pre = flat.slice(Math.max(0, m.index - 40), m.index);\n    var hit = { amount: amount, idx: m.index, end: re.lastIndex, foreign: /US|U\\$S|D[OÓ]L/.test(cur), total: /(?:^|[^a-z])total[^$]{0,18}$/i.test(pre) };\n    (RE_AUX.test(pre) ? aux : main).push(hit);\n  }\n  for (var i = 0; i < main.length; i++) if (main[i].total) return main[i];\n  return main[0] || (RE_CARGO.test(flat) ? aux[0] : null) || null;\n}\n\n// Fecha y hora del cargo. «ref» es el momento en que llegó el aviso: ninguna fecha puede ser posterior.\nfunction findWhen(flat, ref) {\n  var base = new Date(ref || Date.now()), lim = dayKey(new Date(base.getTime() + 36 * 3600 * 1000));\n  var dates = [], times = [], m, re;\n  function add(y, mo, d, idx, end) {\n    var k = y + '-' + pad(mo) + '-' + pad(d);\n    if (validDate(k) && k <= lim && y >= 2000) dates.push({ date: k, idx: idx, end: end });\n  }\n  re = /(^|[^\\d\\/.\\-])(\\d{1,2})([\\/.\\-])(\\d{1,2})\\3(\\d{4}|\\d{2})(?![\\d\\/\\-])/g;\n  while ((m = re.exec(flat))) {\n    var d = +m[2], mo = +m[4], y = +m[5];\n    if (y < 100) y += 2000;\n    if (mo > 12 && d <= 12) { var sw = d; d = mo; mo = sw; }\n    add(y, mo, d, m.index + m[1].length, re.lastIndex);\n  }\n  re = /(^|\\D)(\\d{4})-(\\d{2})-(\\d{2})(?!\\d)/g;\n  while ((m = re.exec(flat))) add(+m[2], +m[3], +m[4], m.index + m[1].length, re.lastIndex);\n  re = new RegExp('(^|\\\\D)(\\\\d{1,2})\\\\s*(?:de\\\\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sept|sep|set|oct|nov|dic)\\\\.?(?![' + LETTER + '])(?:\\\\s*,?\\\\s*(?:de\\\\s+|del\\\\s+)?(\\\\d{4})(?!\\\\d))?', 'gi');\n  while ((m = re.exec(flat))) {\n    var mon = MONTHS[m[3].toLowerCase().slice(0, 3)], yr = m[4] ? +m[4] : base.getFullYear();\n    if (!m[4] && yr + '-' + pad(mon) + '-' + pad(+m[2]) > lim) yr--;   // sin año: el más reciente que no sea futuro\n    add(yr, mon, +m[2], m.index + m[1].length, re.lastIndex);\n  }\n  dates.sort(function (a, b) { return a.idx - b.idx; });\n  re = /(^|[^\\d:])(\\d{1,2}):(\\d{2})(?::\\d{2})?(?:\\s*(a\\.?\\s?m\\.?|p\\.?\\s?m\\.?)(?![a-z]))?(?![\\d:])/gi;\n  while ((m = re.exec(flat))) {\n    var h = +m[2], mi = +m[3], ap = (m[4] || '').toLowerCase().charAt(0);\n    if (ap === 'p' && h < 12) h += 12;\n    if (ap === 'a' && h === 12) h = 0;\n    if (h < 24 && mi < 60) times.push({ time: pad(h) + ':' + pad(mi), idx: m.index + m[1].length, end: re.lastIndex });\n  }\n  var date = dates[0] || null, time = null, i;\n  if (date) {\n    for (i = 0; i < times.length && !time; i++) if (times[i].idx >= date.end && times[i].idx - date.end <= 30) time = times[i];\n    for (i = 0; i < times.length && !time; i++) if (times[i].end <= date.idx && date.idx - times[i].end <= 16) time = times[i];\n  }\n  for (i = 0; i < times.length && !time; i++) if (/(?:hora|a\\s+las?)\\W{0,4}$/i.test(flat.slice(Math.max(0, times[i].idx - 16), times[i].idx))) time = times[i];\n  return { date: date ? date.date : '', time: time ? time.time : '' };\n}\n\nfunction tidyName(v) {\n  v = String(v == null ? '' : v).split(RE_STOP)[0];\n  return clean(v.replace(/^[\\s:\"'«»“”*\\-–—]+|[\\s:\"'«»“”*.,;\\-–—]+$/g, ''));\n}\nfunction okName(v) { return v.length >= 2 && /[a-z0-9]/i.test(v) && !/^[\\s$\\d.,:\\/\\-]+$/.test(v); }\nfunction findMerchant(lines, flat, from) {\n  var m, v, i, j, re;\n  // 1. «Comercio: NOMBRE», en cualquier parte del texto\n  for (j = 0; j < LABELS.length; j++) {\n    m = new RegExp('(?:^|[^' + LETTER + '])(?:' + LABELS[j] + ')\\\\s*:\\\\s*(.{2,90})', 'i').exec(flat);\n    if (m && okName(v = tidyName(m[1]))) return v;\n  }\n  // 2. El rótulo solo en su línea y el nombre en la siguiente, o «Comercio NOMBRE» sin dos puntos\n  for (j = 0; j < LABELS.length; j++) {\n    re = new RegExp('^(?:' + LABELS[j] + ')(?![' + LETTER + '])\\\\s*[:\\\\-–]?\\\\s*(.*)$', 'i');\n    for (i = 0; i < lines.length; i++) {\n      m = re.exec(lines[i]);\n      if (!m) continue;\n      if (!m[1]) v = tidyName(lines[i + 1]);\n      else if (j < STRONG && !/^del?\\s/i.test(m[1])) v = tidyName(m[1]);\n      else continue;\n      if (okName(v)) return v;\n    }\n  }\n  // 3. «Comercio NOMBRE» en medio de una línea, sin dos puntos. El nombre debe partir con mayúscula o número, y el\n  //    rótulo no puede ir todo en mayúsculas: ahí es parte del nombre de un comercio («COMERCIO UNO»).\n  for (j = 0; j < STRONG; j++) {\n    m = new RegExp('(?:^|[^' + LETTER + '])(' + LABELS[j] + ')\\\\s+(.{2,90})', 'i').exec(flat);\n    if (m && m[1] !== m[1].toUpperCase() && /^[A-ZÁÉÍÓÚÑ0-9]/.test(m[2]) && okName(v = tidyName(m[2]))) return v;\n  }\n  // 4. «… en NOMBRE el 10/10/2026»: primero lo que sigue al monto, después el texto completo\n  var parts = [flat.slice(from), flat];\n  for (j = 0; j < parts.length; j++) {\n    re = new RegExp('(?:^|\\\\s)[Ee][Nn]\\\\s+(?:el\\\\s+comercio\\\\s+|el\\\\s+local\\\\s+|la\\\\s+tienda\\\\s+|comercio\\\\s+)?(.{2,60}?)' + NAME_END, 'g');\n    while ((m = re.exec(parts[j]))) {\n      if (RE_NOT_NAME.test(m[1])) { re.lastIndex = m.index + 3; continue; }\n      if (okName(v = tidyName(m[1]))) return v;\n    }\n  }\n  // 5. «Pagaste $5.990 a NETFLIX»\n  m = new RegExp('^\\\\s*(?:a|para|de)\\\\s+([A-Z0-9].{1,50}?)' + NAME_END).exec(flat.slice(from));\n  if (m && okName(v = tidyName(m[1]))) return v;\n  return '';\n}\nvar RE_OP = new RegExp('(?:^|[^' + LETTER + '])(?:n[°ºo]\\\\.?|nro\\\\.?|n[uú]mero|c[oó]digo|id|folio)\\\\s*(?:de\\\\s+)?(?:la\\\\s+)?(?:operaci[oó]n|transacci[oó]n|autorizaci[oó]n|comprobante|orden|referencia|movimiento)\\\\s*[:#\\\\-]?\\\\s*([A-Za-z0-9][A-Za-z0-9\\\\-]{3,23})', 'i');\nfunction findOp(flat) {\n  var m = RE_OP.exec(flat);\n  return m && /\\d/.test(m[1]) ? m[1].toUpperCase() : '';\n}\n// ¿El texto afirma esto? No cuenta si viene en una frase condicional («si la compra no fue realizada por ti…»).\nfunction says(re, text) {\n  var g = new RegExp(re.source, 'gi'), m;\n  while ((m = g.exec(text))) {\n    var clause = text.slice(0, m.index + 1).split(/[.!?:]\\s+/).pop();\n    if (!new RegExp('(?:^|[^' + LETTER + '])(?:si|en\\\\s+caso)\\\\s', 'i').test(clause)) return true;\n    if (g.lastIndex === m.index) g.lastIndex++;\n  }\n  return false;\n}\n\n// Lee un aviso. «kind»: 'c' cargo, 'd' aviso de abono o devolución, 'x' cargo rechazado, 'f' cargo en dólares,\n// 'o' correo de otro asunto y '' un correo de bip! que no se reconoce como aviso.\nfunction readNotice(text, ref) {\n  var lines = text.split(/[\\r\\n\\t]+/).map(function (l) { return l.replace(/\\s+/g, ' ').trim(); }).filter(Boolean);\n  var flat = lines.join(' ');\n  var out = { kind: '', amount: 0, merchant: '', date: '', time: '', op: '', bip: RE_BIP.test(flat), text: flat.slice(0, 300) };\n  var pay = flat ? findAmount(flat) : null;\n  if (!pay) return out;\n  var when = findWhen(flat, ref);\n  out.amount = pay.amount;\n  out.date = when.date; out.time = when.time;\n  out.merchant = findMerchant(lines, flat, pay.end);\n  out.op = findOp(flat);\n  // El asunto y el encabezado del aviso van antes del monto: ahí, o en el nombre del comercio, tiene que decir «bip».\n  // Una mención de bip! más abajo (en la letra chica de otro correo) no cuenta.\n  out.bip = RE_BIP.test(flat.slice(0, pay.idx) + ' ' + out.merchant);\n  // El rechazo o el abono se anuncian junto al monto, no en la letra chica del final del correo\n  out.kind = says(RE_NO, flat.slice(0, pay.end + 120)) ? 'x' : says(RE_IN, flat.slice(0, pay.end + 60)) ? 'd' : !RE_CARGO.test(flat) ? '' : pay.foreign ? 'f' : 'c';\n  return out;\n}\nfunction parseAny(raw, ref) {\n  // Primero el texto tal como llegó. Si trae líneas cortadas con «=», primero su versión decodificada,\n  // para no leer un comercio o una hora partidos por la mitad.\n  var texts = [String(raw == null ? '' : raw)], alt = unwrapMail(raw), first = null;\n  texts = /=\\r?\\n/.test(texts[0]) ? alt.concat(texts) : texts.concat(alt);\n  for (var i = 0; i < texts.length; i++) {\n    var p = readNotice(plainText(texts[i]), ref);\n    if (p.kind) return p;\n    if (!first || (p.bip && !first.bip)) first = p;\n  }\n  return first;\n}\n// Solo cuentan los correos de bip!. Los demás correos de Copec Pay (otras compras, abonos, promociones) se dejan fuera.\nfunction parseMail(raw, ref) {\n  var p = parseAny(raw, ref);\n  if (!p.bip) p.kind = 'o';\n  return p;\n}\n// Deja el cargo listo para guardarlo. «at» es el momento en que el aviso llegó al buzón (0 si se pegó a mano)\n// y «num», su número dentro del buzón.\n//  · Con fecha y hora en el aviso: se usan tal cual. Es el momento real del cargo, aunque el correo llegue horas después.\n//  · Con fecha y sin hora: si el aviso llegó ese mismo día, el cargo fue en la madrugada (00:00); si llegó al día\n//    siguiente, fue en la noche anterior (23:59).\n//  · Con hora y sin fecha: el día es el de llegada, o el anterior si esa hora todavía no había pasado.\n//  · Sin fecha ni hora: se usa el momento de llegada.\nfunction settle(p, at, num) {\n  var ref = new Date(at || Date.now()), date = p.date, time = p.time, nt = 0, est = 0;\n  if (!date) {\n    date = dayKey(ref);\n    if (time) { est = 1; if (time > hm(ref)) date = dayKey(new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - 1)); }\n    else { est = 2; time = hm(ref); }\n  } else if (!time) {\n    nt = 1; time = at && dayKey(ref) > date ? '23:59' : '00:00';\n  }\n  var name = p.merchant || 'Carga bip!', exact = !!(p.op || (p.date && p.time));\n  var key = p.op ? 'OP' + p.op + '|' + p.amount\n    : exact ? date + 'T' + time + '|' + p.amount + '|' + name.toUpperCase()\n    : num ? 'I' + num + '|' + p.amount\n    : date + '|' + p.amount + '|' + name.toUpperCase() + '|P';\n  return { date: date, time: time, amount: p.amount, merchant: name, key: key, exact: exact, nt: nt, est: est, rcv: at || 0, raw: p.text };\n}\n// La clave de un cargo, sin signos ni acentos en el comercio: así un mismo aviso se reconoce aunque el correo\n// haya llegado una vez con el texto dañado y otra vez bien.\nfunction skel(key) {\n  var p = String(key).split('|');\n  return p[0] + '|' + (p[1] || '') + '|' + p.slice(2).join('').toUpperCase().replace(/[^A-Z0-9]/g, '');\n}\n/* LECTOR:FIN */\n\n// ¿El cargo es posterior al saldo de partida? Lo anterior ya está incluido en ese saldo (la misma regla de la app).\nfunction counts(f, at) {\n  if (!at) return false;\n  if (f.nt) {\n    const day = at.slice(0, 10);\n    if (f.date !== day) return f.date > day;\n    return f.rcv ? f.rcv >= atMs(at) + 60000 : true;\n  }\n  return f.date + 'T' + f.time >= at;\n}\n\n/* ---------- Datos ---------- */\nasync function gh(path) {\n  const r = new Request(API + path);\n  r.headers = { Authorization: 'Bearer ' + TOKEN, Accept: 'application/vnd.github+json' };\n  r.timeoutInterval = 20;\n  const data = await r.loadJSON();\n  const code = r.response && r.response.statusCode;\n  if (code && code >= 400) { const e = new Error('GitHub ' + code); e.status = code; throw e; }\n  return data;\n}\nfunction cachePath() { const fm = FileManager.local(); return fm.joinPath(fm.documentsDirectory(), 'copec-widget.json'); }\nfunction readCache() {\n  try { const fm = FileManager.local(), p = cachePath(); return fm.fileExists(p) ? JSON.parse(fm.readString(p)) : null; } catch (e) { return null; }\n}\nfunction writeCache(res) { try { FileManager.local().writeString(cachePath(), JSON.stringify(res)); } catch (e) {} }\n\n// Saldo publicado por la app + cargos de bip! que llegaron al buzón después de la última vez que la app lo leyó\nasync function load() {\n  const list = await gh('/milestones?state=all&per_page=100');\n  const ms = (Array.isArray(list) ? list : []).filter(function (x) { return x && x.title === MS_TITLE; })[0];\n  let st = null;\n  try { st = ms && ms.description ? JSON.parse(ms.description) : null; } catch (e) { st = null; }\n  if (!st || st.app !== 'copec') return { msg: 'Abre la app Copec y activa el widget en «Buzón y atajo».' };\n\n  const known = {};\n  (st.keys || []).forEach(function (k) { known[k] = 1; });\n  const since = st.read > 0 ? '&since=' + encodeURIComponent(new Date(st.read - 30 * 60000).toISOString().replace(/\\.\\d+Z$/, 'Z')) : '';\n  const nuevas = [];\n  for (let page = 1; page <= 3; page++) {\n    const issues = await gh('/issues?state=all&sort=created&direction=asc&per_page=100&page=' + page + since);\n    if (!Array.isArray(issues)) break;\n    issues.forEach(function (it) {\n      if (!it || it.pull_request) return;\n      // «Copec» a secas es la etiqueta fija del atajo; cualquier otro título es el asunto del correo\n      const title = String(it.title || '').trim();\n      const text = (title && !/^(?:copec|aviso)$/i.test(title) ? title + '\\n' : '') + String(it.body || '');\n      const at = Date.parse(it.created_at) || 0;\n      const p = parseMail(text, at);                 // solo los correos de bip!\n      if (p.kind !== 'c') return;\n      const f = settle(p, at, +it.number || 0), sk = skel(f.key);\n      if (known[sk]) return;\n      known[sk] = 1;\n      if (st.at && !counts(f, st.at)) return;         // anterior al saldo de partida: ya está incluido en él\n      nuevas.push(f);\n    });\n    if (issues.length < 100) break;\n  }\n  let saldo = typeof st.saldo === 'number' ? st.saldo : null;\n  if (saldo !== null) nuevas.forEach(function (f) { saldo -= f.amount; });\n  const buys = (st.ult || []).concat(nuevas.map(function (f) { return { d: f.date, h: f.time, c: f.merchant, m: f.amount, nt: f.nt }; }))\n    .filter(function (b) { return b && b.d && b.m > 0; })\n    .sort(function (a, b) { return (a.d + 'T' + a.h) < (b.d + 'T' + b.h) ? 1 : -1; }).slice(0, 3)\n    .map(function (b) { return { d: b.d, h: b.h, c: String(b.c || 'Carga bip!'), m: b.m, nt: b.nt ? 1 : 0 }; });\n  return { saldo: saldo, buys: buys, nuevas: nuevas.length, at: Date.now() };\n}\n\n/* ---------- Dibujo ---------- */\nconst WHITE = new Color('#ffffff'), LIME = new Color('#00ff7e');\nfunction label(stack, str, size, color, opacity, bold) {\n  const t = stack.addText(str);\n  t.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size);\n  t.textColor = color || WHITE;\n  if (opacity) t.textOpacity = opacity;\n  t.lineLimit = 1;\n  return t;\n}\nfunction when(b) { return dayLabel(b.d) + (b.nt ? '' : ' ' + b.h); }\nfunction build(res, family) {\n  const w = new ListWidget();\n  const lock = String(family || '').indexOf('accessory') === 0;\n  const small = family === 'small';\n  if (lock) {\n    // Pantalla bloqueada: saldo y último cargo\n    label(w, 'Copec ' + (res.msg ? '' : res.saldo === null ? 'sin saldo' : money(res.saldo)), 14, null, 0, true).minimumScaleFactor = 0.6;\n    if (res.msg) label(w, res.msg, 11).lineLimit = 2;\n    else if (res.buys.length) label(w, 'bip! ' + when(res.buys[0]) + ' ' + money(-res.buys[0].m), 11).minimumScaleFactor = 0.7;\n    return w;\n  }\n  const g = new LinearGradient();\n  g.colors = [new Color('#1f4dff'), new Color('#002df9'), new Color('#001a9c')];\n  g.locations = [0, 0.45, 1];\n  g.startPoint = new Point(0, 0);\n  g.endPoint = new Point(1, 1);\n  w.backgroundGradient = g;\n  w.setPadding(small ? 12 : 14, small ? 12 : 16, small ? 10 : 12, small ? 12 : 16);\n\n  const head = w.addStack();\n  head.layoutHorizontally();\n  head.centerAlignContent();\n  label(head, 'SALDO COPEC', small ? 9 : 10, LIME, 0, true);\n  head.addSpacer();\n  if (res.at) label(head, (res.old ? 'sin conexión · ' : '') + hm(new Date(res.at)), 9, WHITE, 0.6);\n  w.addSpacer(2);\n\n  if (res.msg) {\n    const t = label(w, res.msg, small ? 12 : 14, WHITE, 0.9);\n    t.lineLimit = 4;\n    w.addSpacer();\n    return w;\n  }\n  const total = label(w, res.saldo === null ? 'Sin saldo inicial' : money(res.saldo), small ? 22 : 28, WHITE, 0, true);\n  total.minimumScaleFactor = 0.5;\n  w.addSpacer(small ? 4 : 8);\n\n  if (!res.buys.length) label(w, 'Aún no hay cargos de bip!', 12, WHITE, 0.7);\n  res.buys.forEach(function (b, i) {\n    if (i) w.addSpacer(small ? 2 : 4);\n    const row = w.addStack();\n    row.layoutHorizontally();\n    row.centerAlignContent();\n    if (small) label(row, when(b), 10, WHITE, 0.75);\n    else {\n      const col = row.addStack();                    // columna de la fecha, de ancho fijo para que los nombres queden alineados\n      col.layoutHorizontally();\n      col.size = new Size(66, 0);\n      label(col, when(b), 10, WHITE, 0.6);\n      col.addSpacer();\n      label(row, b.c, 12, WHITE, 0.95);\n    }\n    row.addSpacer();\n    label(row, money(-b.m), small ? 10 : 12, WHITE, 0, true);\n  });\n  w.addSpacer();\n  return w;\n}\n\n/* ---------- Ejecución ---------- */\nlet res;\nif (/^__/.test(TOKEN) || /^__/.test(REPO)) {\n  res = { msg: 'Copia este script desde la app Copec, con el botón «Copiar el script del widget».' };\n} else {\n  try {\n    res = await load();\n    if (!res.msg) writeCache(res);\n  } catch (e) {\n    const c = readCache();\n    if (c && !c.msg) { res = c; res.old = true; }\n    else res = { msg: e && e.status === 401 ? 'El token venció. Copia de nuevo el script desde la app Copec.' : 'No se pudo leer el buzón. Revisa la conexión.' };\n  }\n}\nconst widget = build(res, config.widgetFamily);\nwidget.refreshAfterDate = new Date(Date.now() + 10 * 60 * 1000);\nif (config.runsInWidget) Script.setWidget(widget);\nelse await widget.presentMedium();\nScript.complete();\n";
   // Si la app está en GitHub Pages, el buzón se sugiere en la misma cuenta
   var OWNER = /\.github\.io$/i.test(location.hostname) ? location.hostname.split('.')[0] : '';
 
@@ -377,8 +381,9 @@ svg { display: block; }
   var items = [];                                   // movimientos, del más antiguo al más reciente
   // Saldo de partida, desde cuándo rige y avisos de Copec Pay descartados a propósito
   var cfg = { amount: 0, at: '', ignored: [] };
-  // De este dispositivo: orden del listado, buzón (repositorio y token), última lectura y último aviso de abono visto
-  var prefs = { order: 'desc', repo: '', token: '', last: 0, abonoAt: 0, v: READER };
+  // De este dispositivo: orden del listado, buzón (repositorio y token), última lectura y último aviso de abono visto.
+  // widget: si se publica el saldo para el widget; wm: número del hito; wSig: huella de lo último publicado; wAt: cuándo
+  var prefs = { order: 'desc', repo: '', token: '', last: 0, abonoAt: 0, v: READER, widget: false, wm: 0, wSig: '', wAt: 0 };
   var filter = 'all';                               // 'all' | 'c' cargos | 'd' abonos
   var shown = PAGE;
   var fresh = {};                                   // movimientos recién traídos, para marcarlos como nuevos
@@ -436,6 +441,7 @@ svg { display: block; }
     return a.toString(36) + b.toString(36);
   }
 
+  /* LECTOR:INICIO — Este bloque se copia tal cual en el widget (widget/copec-widget.js): no usa nada del navegador. */
   /* ---------- Lector de los avisos de Copec Pay ---------- */
   // El lector no depende de una frase exacta. De cada correo busca el monto, el comercio, la fecha y la hora del
   // cargo, vengan en una oración («…un cargo por $5.990 en NETFLIX el 10/10/2026 a las 03:12») o como una lista
@@ -458,32 +464,88 @@ svg { display: block; }
       return String.fromCharCode(seq.length > 2 ? (0x2 << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f) : ((seq.charCodeAt(0) & 0x1f) << 6) | (b1 & 0x3f));
     });
   }
-  // Bytes a texto: UTF-8 si es válido; si no, la codificación habitual de los correos en español
+  // Texto a bytes UTF-8 y de vuelta, escrito a mano: el mismo lector corre en el widget de Scriptable, sin las
+  // funciones del navegador (TextDecoder, atob).
+  function utf8Bytes(str, out) {
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff && i + 1 < str.length) {
+        var d = str.charCodeAt(i + 1);
+        if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i++; }
+      }
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | c >> 6, 0x80 | c & 63);
+      else if (c < 0x10000) out.push(0xe0 | c >> 12, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+      else out.push(0xf0 | c >> 18, 0x80 | c >> 12 & 63, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+    }
+    return out;
+  }
+  function utf8Text(b) {   // null si los bytes no son UTF-8 válido
+    var out = '', i = 0;
+    while (i < b.length) {
+      var c = b[i++];
+      if (c < 0x80) { out += String.fromCharCode(c); continue; }
+      var n = c >= 0xc2 && c < 0xe0 ? 1 : c >= 0xe0 && c < 0xf0 ? 2 : c >= 0xf0 && c < 0xf5 ? 3 : 0;
+      if (!n || i + n > b.length) return null;
+      var cp = c & (n === 1 ? 0x1f : n === 2 ? 0x0f : 0x07);
+      for (var k = 0; k < n; k++) { var x = b[i++]; if ((x & 0xc0) !== 0x80) return null; cp = cp << 6 | x & 0x3f; }
+      if (cp >= 0x10000) { cp -= 0x10000; out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff)); }
+      else out += String.fromCharCode(cp);
+    }
+    return out;
+  }
+  var CP1252_BACK = {};
+  Object.keys(CP1252).forEach(function (k) { CP1252_BACK[CP1252[k]] = +k; });
+  // Bytes a texto: UTF-8 si es válido; si no, la codificación habitual de los correos en español (Windows-1252)
   function bytesToText(bytes) {
-    try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) {}
-    try { return new TextDecoder('windows-1252').decode(bytes); } catch (e2) {}
-    var out = ''; for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]); return out;
+    var t = utf8Text(bytes);
+    if (t !== null) return t;
+    var out = '';
+    for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(CP1252_BACK[bytes[i]] || bytes[i]);
+    return out;
+  }
+  var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  function b64Bytes(str) {
+    var out = [], acc = 0, bits = 0;
+    for (var i = 0; i < str.length; i++) {
+      var v = B64.indexOf(str.charAt(i));
+      if (v < 0) continue;
+      acc = (acc << 6 | v) & 0xffffff; bits += 6;
+      if (bits >= 8) { bits -= 8; out.push(acc >> bits & 0xff); }
+    }
+    return out;
   }
   // Un correo puede llegar tal como viaja por la red: con «=C3=A9» y líneas cortadas con «=», o entero en base64
   function unwrapMail(raw) {
     var src = String(raw == null ? '' : raw), out = [];
     if (/=\r?\n|=[0-9A-Fa-f]{2}/.test(src)) {
-      var q = src.replace(/=\r?\n/g, ''), enc = new TextEncoder(), parts = [], size = 0, last = 0, re = /(?:=[0-9A-Fa-f]{2})+/g, m;
+      var q = src.replace(/=\r?\n/g, ''), bytes = [], last = 0, re = /(?:=[0-9A-Fa-f]{2})+/g, m;
       while ((m = re.exec(q))) {
-        parts.push(enc.encode(q.slice(last, m.index)), Uint8Array.from(m[0].slice(1).split('='), function (h) { return parseInt(h, 16); }));
+        utf8Bytes(q.slice(last, m.index), bytes);
+        m[0].slice(1).split('=').forEach(function (h) { bytes.push(parseInt(h, 16)); });
         last = re.lastIndex;
       }
-      parts.push(enc.encode(q.slice(last)));
-      parts.forEach(function (x) { size += x.length; });
-      var all = new Uint8Array(size), at = 0;
-      parts.forEach(function (x) { all.set(x, at); at += x.length; });
-      out.push(bytesToText(all));
+      utf8Bytes(q.slice(last), bytes);
+      out.push(bytesToText(bytes));
     }
     var b = src.replace(/\s+/g, '');
-    if (b.length >= 80 && b.length % 4 === 0 && /^[A-Za-z0-9+\/]+={0,2}$/.test(b)) {
-      try { var bin = atob(b), arr = new Uint8Array(bin.length); for (var k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k); out.push(bytesToText(arr)); } catch (e) {}
-    }
+    if (b.length >= 80 && b.length % 4 === 0 && /^[A-Za-z0-9+\/]+={0,2}$/.test(b)) out.push(bytesToText(b64Bytes(b)));
     return out;
+  }
+  // Entidades de HTML («&eacute;», «&#36;»): las habituales en un correo en español
+  var ENT = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", dollar: '$', num: '#', percnt: '%', excl: '!', quest: '?', ast: '*',
+    colon: ':', semi: ';', comma: ',', period: '.', sol: '/', lpar: '(', rpar: ')', deg: '°', ordm: 'º', ordf: 'ª', iexcl: '¡', iquest: '¿',
+    laquo: '«', raquo: '»', ndash: '–', mdash: '—', hellip: '…', bull: '•', middot: '·', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+    euro: '€', copy: '©', reg: '®', trade: '™', times: '×', shy: '', zwnj: '', zwj: '', ntilde: 'ñ', Ntilde: 'Ñ', uuml: 'ü', Uuml: 'Ü' };
+  'aeiouAEIOU'.split('').forEach(function (v, i) { ENT[v + 'acute'] = 'áéíóúÁÉÍÓÚ'.charAt(i); });
+  function decodeEntities(str) {
+    return str.replace(/&(#x?[0-9a-f]+|[a-z]+[0-9]*);/gi, function (all, e) {
+      if (e.charAt(0) === '#') {
+        var c = e.charAt(1).toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        try { return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : ' '; } catch (er) { return ' '; }
+      }
+      return Object.prototype.hasOwnProperty.call(ENT, e) ? ENT[e] : all;
+    });
   }
   // Texto del correo sin etiquetas. Cada bloque del correo (párrafo, fila o celda de una tabla) queda en su propia línea.
   function plainText(s) {
@@ -496,10 +558,9 @@ svg { display: block; }
         .replace(/<(?:br|hr)\b[^>]*>|<\/(?:p|div|tr|li|h[1-6]|table|ul|ol|td|th|section|article)>/gi, '\n')
         .replace(/<[^>]+>/g, ' ');
     }
-    if (/&[#a-z0-9]+;/i.test(s)) { var t = document.createElement('textarea'); t.innerHTML = s; s = t.value; }
+    if (/&[#a-z0-9]+;/i.test(s)) s = decodeEntities(s);
     return s.replace(/[   ​‌‍﻿]/g, ' ');
   }
-  function oneLine(s) { return plainText(s).replace(/\s+/g, ' ').trim(); }
 
   var LETTER = 'a-záéíóúüñ';
   // La app registra solo los correos de bip!: los que traen «bip» en el asunto («Tu compra en Carga bip! se realizó con éxito»)
@@ -709,6 +770,9 @@ svg { display: block; }
     var p = String(key).split('|');
     return p[0] + '|' + (p[1] || '') + '|' + p.slice(2).join('').toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
+  /* LECTOR:FIN */
+
+  function oneLine(s) { return plainText(s).replace(/\s+/g, ' ').trim(); }
   function whenText(f) {
     return fmt(f.date) + (f.nt ? ', sin hora en el aviso' : f.est === 2 ? ', ' + f.time + ' (hora en que llegó el aviso)' : ', ' + f.time);
   }
@@ -803,6 +867,10 @@ svg { display: block; }
       if (!prefs.repo) prefs.token = '';
       prefs.last = prefs.repo && +p.last > 0 ? +p.last : 0;
       prefs.abonoAt = prefs.repo && +p.abonoAt > 0 ? +p.abonoAt : 0;
+      prefs.widget = !!(prefs.repo && p.widget);
+      prefs.wm = prefs.widget && +p.wm > 0 ? Math.round(+p.wm) : 0;
+      prefs.wSig = prefs.widget && typeof p.wSig === 'string' ? p.wSig.slice(0, 40) : '';
+      prefs.wAt = prefs.widget && +p.wAt > 0 ? +p.wAt : 0;
       if (!(+p.v >= READER)) prefs.last = 0;   // con un lector de avisos nuevo, la primera lectura repasa el buzón completo
       prefs.v = READER;
     } catch (e) {}
@@ -1121,6 +1189,64 @@ svg { display: block; }
     toast('Buzón conectado. ' + (r.added ? addedMsg(r, box) : box.found.length ? 'Sus cargos ya estaban registrados.' : 'Aún no tiene avisos de bip!: llegarán con tu próximo cargo.'), null, null, 6500);
   }
 
+  /* ---------- Widget de la pantalla de inicio (app Scriptable) ---------- */
+  // Una app web no puede crear widgets. La app publica el saldo y los últimos cargos en un hito del buzón y el script
+  // de Scriptable los dibuja, descontando los cargos de bip! que llegaron al buzón después. Solo se publica si se activa.
+  var widgetTimer = 0, widgetBusy = false, widgetErr = '';
+  function widgetState() {
+    var c = compute(), cut = dayKey(new Date(Date.now() - 5 * 86400000)), keys = [], buys = [];
+    for (var i = items.length - 1; i >= 0 && buys.length < 3; i--) {
+      var m = items[i];
+      if (m.type === 'c') buys.push({ d: m.date, h: m.time, c: m.desc, m: m.amount, nt: m.nt });
+    }
+    items.forEach(function (x) { if (x.key && x.date >= cut) keys.push(skel(x.key)); });   // cargos recientes ya contados
+    cfg.ignored.slice(-80).forEach(function (k) { keys.push(skel(k)); });                    // y los eliminados a propósito
+    return { v: 1, app: 'copec', saldo: cfg.at ? c.balance : null, at: cfg.at, read: prefs.last || 0, ult: buys, keys: keys };
+  }
+  async function ghJson(method, path, body) {
+    var res = await fetch(API + prefs.repo + path, {
+      method: method, cache: 'no-store', body: body ? JSON.stringify(body) : undefined,
+      headers: { Authorization: 'Bearer ' + prefs.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw fetchError(res.status);
+    return res.json();
+  }
+  async function publishWidget() {
+    if (!canSync || !prefs.repo || !prefs.widget || widgetBusy || loading) return;
+    var st = widgetState(), sig = hash(JSON.stringify(st));
+    if (sig === prefs.wSig && prefs.wm) return;
+    widgetBusy = true;
+    try {
+      st.t = Date.now();
+      var desc = JSON.stringify(st);
+      if (!prefs.wm) {
+        var list = await ghJson('GET', '/milestones?state=all&per_page=100');
+        var found = (Array.isArray(list) ? list : []).filter(function (x) { return x && x.title === WIDGET_TITLE; })[0];
+        prefs.wm = found ? found.number : (await ghJson('POST', '/milestones', { title: WIDGET_TITLE, state: 'closed', description: desc })).number;
+        if (found) await ghJson('PATCH', '/milestones/' + prefs.wm, { description: desc });
+      } else {
+        await ghJson('PATCH', '/milestones/' + prefs.wm, { description: desc });
+      }
+      prefs.wSig = sig; prefs.wAt = Date.now(); widgetErr = '';
+    } catch (e) {
+      if (e && e.status === 404) prefs.wm = 0;   // el hito ya no existe: se vuelve a crear en el próximo intento
+      widgetErr = errCode(e);
+    }
+    savePrefs();
+    widgetBusy = false;
+  }
+  function queueWidget() {
+    if (!prefs.widget) return;
+    clearTimeout(widgetTimer);
+    widgetTimer = setTimeout(publishWidget, 1200);
+  }
+  async function widgetOff() {
+    var n = prefs.wm;
+    prefs.widget = false; prefs.wSig = ''; prefs.wAt = 0; savePrefs();
+    clearTimeout(widgetTimer);
+    if (n) { try { await ghJson('PATCH', '/milestones/' + n, { description: '' }); } catch (e) {} }   // no deja el saldo guardado en el buzón
+  }
+
   /* ---------- Vistas ---------- */
   function header() {
     return '<header class="top"><span class="mark">' + I_MARK + '</span><div><div class="eyebrow">Cuenta Copec Pay · registro personal</div><h1>Copec</h1></div></header>';
@@ -1249,6 +1375,7 @@ svg { display: block; }
     var wasOpen = open && open.open, bk = document.getElementById('bk-text'), bkVal = bk ? bk.value : '';
     app.innerHTML = h;
     restoreArmed = false; wipeArmed = false;
+    queueWidget();
     if (wasOpen) { var d = app.querySelector('.backup'); if (d) { d.open = true; document.getElementById('bk-text').value = bkVal; } }
   }
 
@@ -1341,6 +1468,21 @@ svg { display: block; }
         '<li><div>En <strong>Solicitar cuerpo</strong> deja <strong>JSON</strong> y agrega dos campos de tipo <strong>Texto</strong>: clave <span class="mono">title</span> con el valor <span class="mono">Copec</span>, y clave <span class="mono">body</span> con la variable <strong>Entrada del atajo</strong>.</div></li>' +
         '<li><div>Toca <strong>Listo</strong>. Con el próximo cargo, el aviso llega solo al buzón y aparece aquí al abrir la app.</div></li>' +
         '</ol></details>' +
+        '<details class="how"><summary>Widget en la pantalla de inicio</summary>' +
+        '<p class="sub">Muestra el saldo y los tres últimos cargos de bip!. Se hace con la app gratuita Scriptable, porque una app web no puede crear widgets por sí sola.</p>' +
+        '<ol class="guide">' +
+        '<li><div>Instala <strong>Scriptable</strong> desde el App Store.</div></li>' +
+        '<li><div>Copia el script. Ya va completo, con tu buzón y tu token.<br><button type="button" class="btn tonal small" data-act="copy-widget">Copiar el script del widget</button></div></li>' +
+        '<li><div>Abre Scriptable, toca <strong>+</strong> y pega el script. Toca el título de arriba y nómbralo <strong>Copec</strong>. Ejecútalo con <strong>▶</strong>: debe mostrar el saldo.</div></li>' +
+        '<li><div>En la pantalla de inicio, mantén presionado un espacio vacío, toca <strong>Editar</strong> y <strong>Agregar widget</strong>. Busca <strong>Scriptable</strong> y elige el tamaño mediano.</div></li>' +
+        '<li><div>Mantén presionado el widget nuevo, toca <strong>Editar widget</strong> y en <strong>Script</strong> elige <strong>Copec</strong>.</div></li>' +
+        '</ol>' +
+        '<p class="note">' + (prefs.widget
+          ? '<strong>Widget activado.</strong> ' + (widgetErr ? 'No se pudieron enviar los datos: ' + esc(errMsg(widgetErr)) : prefs.wAt ? 'Datos enviados ' + ago(prefs.wAt) + '.' : 'Enviando los datos…') + ' '
+          : '') +
+        'Para el widget, la app guarda el saldo y los últimos cargos en tu repositorio privado, y el script lleva tu token. El widget descuenta solo los cargos de la noche apenas llegan al buzón, aunque no abras la app. iOS decide cada cuánto lo actualiza, normalmente cada varios minutos.' +
+        (prefs.widget ? '<br><button type="button" class="btn ghost small" data-act="widget-off">Desactivar el widget</button>' : '') + '</p>' +
+        '</details>' +
         '<div class="stack"><button type="button" class="btn primary block" data-act="sync-now">Leer todo el buzón ahora</button>' +
         '<button type="button" class="btn danger block" data-act="disconnect">Desconectar el buzón</button>' +
         '<button type="button" class="btn ghost block" data-act="cancel">Cerrar</button></div></div>';
@@ -1477,11 +1619,19 @@ svg { display: block; }
     if (a === 'copy-url') { copyText(API + prefs.repo + '/issues', 'Dirección copiada'); return; }
     if (a === 'copy-auth') { copyText('Bearer ' + prefs.token, 'Autorización copiada'); return; }
     if (a === 'copy-mails') { copyText(sheet.mails || '', 'Detalle copiado'); return; }
+    if (a === 'copy-widget') {
+      copyText(WIDGET_CODE.replace('__REPO__', function () { return prefs.repo; }).replace('__TOKEN__', function () { return prefs.token; }), 'Script copiado. El widget quedó activado.');
+      if (!prefs.widget) { prefs.widget = true; savePrefs(); }
+      publishWidget();
+      return;
+    }
+    if (a === 'widget-off') { await widgetOff(); closeSheet(); toast('Widget desactivado. Puedes quitarlo de la pantalla de inicio.'); return; }
     if (a === 'paste-add') { importPaste(); return; }
     if (a === 'sync-now') { closeSheet(); syncBox(true, true); return; }
     if (a === 'disconnect') {
       if (!sheet.del) { sheet.del = true; b.textContent = 'Toca de nuevo para desconectar'; b.classList.add('armed'); return; }
-      prefs.repo = ''; prefs.token = ''; prefs.last = 0; prefs.abonoAt = 0; syncErr = ''; savePrefs();
+      if (prefs.widget) await widgetOff();
+      prefs.repo = ''; prefs.token = ''; prefs.last = 0; prefs.abonoAt = 0; prefs.wm = 0; syncErr = ''; savePrefs();
       closeSheet(); render();
       toast('Buzón desconectado. Tus movimientos siguen aquí.');
       return;

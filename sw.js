@@ -1,5 +1,5 @@
 // Service worker mínimo: deja la app disponible sin conexión.
-const CACHE = 'copec-v2';
+const CACHE = 'copec-v3';
 const ASSETS = [
   './',
   'index.html',
