@@ -163,6 +163,10 @@ function plainText(s) {
 var LETTER = 'a-záéíóúüñ';
 // La app registra solo los correos de bip!: los que traen «bip» en el asunto («Tu compra en Carga bip! se realizó con éxito»)
 var RE_BIP = new RegExp('(?:^|[^' + LETTER + '0-9])bip(?![' + LETTER + '0-9])', 'i');
+// Encabezado del aviso: «Tu compra en Carga bip! se realizó con éxito». Lo que va entre «en» y «se realizó» es el comercio.
+var RE_HEAD = /(?:compra|pago|cargo|transacci[oó]n|recarga)\s+en\s+(.{2,60}?)\s+(?:se\s+(?:realiz|proces|complet|hizo|efectu)|fue\s|ha\s+sido|no\s+(?:se\s+)?(?:pudo|ha\s+podido|realiz|proces)|est[aá]\s)/i;
+// Señas de un aviso de Copec Pay, para cuando el texto llega sin su encabezado
+var RE_COPEC = /copec\s*pay|cuenta\s+vista|n[°º]\s*(?:de\s+)?transacci/i;
 // Palabras de un movimiento que saca dinero de la cuenta
 var RE_CARGO = new RegExp('(?:^|[^' + LETTER + '])(?:compra|cargo|carg[oó]|pago|pag[oó]|pagaste|pagamos|cobr|transacci|suscripci|d[ée]bit|descont|recarga|carga|giro|retir|transfer|consumo|movimiento|operaci[oó]n)', 'i');
 // Un cargo que no se hizo: no descuenta
@@ -202,7 +206,9 @@ function findAmount(flat) {
 }
 
 // Fecha y hora del cargo. «ref» es el momento en que llegó el aviso: ninguna fecha puede ser posterior.
-function findWhen(flat, ref) {
+// «from» es dónde está el monto: manda la primera fecha que viene después de él. Un correo reenviado trae antes su
+// propia «Fecha:» de envío, que no es la del cargo.
+function findWhen(flat, ref, from) {
   var base = new Date(ref || Date.now()), lim = dayKey(new Date(base.getTime() + 36 * 3600 * 1000));
   var dates = [], times = [], m, re;
   function add(y, mo, d, idx, end) {
@@ -232,7 +238,9 @@ function findWhen(flat, ref) {
     if (ap === 'a' && h === 12) h = 0;
     if (h < 24 && mi < 60) times.push({ time: pad(h) + ':' + pad(mi), idx: m.index + m[1].length, end: re.lastIndex });
   }
-  var date = dates[0] || null, time = null, i;
+  var date = null, time = null, i;
+  for (i = 0; i < dates.length && !date; i++) if (dates[i].idx >= (from || 0)) date = dates[i];
+  if (!date) date = dates[0] || null;
   if (date) {
     for (i = 0; i < times.length && !time; i++) if (times[i].idx >= date.end && times[i].idx - date.end <= 30) time = times[i];
     for (i = 0; i < times.length && !time; i++) if (times[i].end <= date.idx && date.idx - times[i].end <= 16) time = times[i];
@@ -302,14 +310,17 @@ function says(re, text) {
 }
 
 // Lee un aviso. «kind»: 'c' cargo, 'd' aviso de abono o devolución, 'x' cargo rechazado, 'f' cargo en dólares,
-// 'o' correo de otro asunto y '' un correo de bip! que no se reconoce como aviso.
+// 'o' correo que no es de bip! (lo decide parseMail) y '' un correo que no se reconoce como aviso.
 function readNotice(text, ref) {
   var lines = text.split(/[\r\n\t]+/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
   var flat = lines.join(' ');
-  var out = { kind: '', amount: 0, merchant: '', date: '', time: '', op: '', bip: RE_BIP.test(flat), text: flat.slice(0, 300) };
+  var out = { kind: '', amount: 0, merchant: '', date: '', time: '', op: '', bip: RE_BIP.test(flat), text: flat.slice(0, 300),
+    subj: findSubject(lines), head: '', copec: RE_COPEC.test(flat) };
+  var hm = RE_HEAD.exec(flat);
+  if (hm) out.head = clean(hm[1]);
   var pay = flat ? findAmount(flat) : null;
   if (!pay) return out;
-  var when = findWhen(flat, ref);
+  var when = findWhen(flat, ref, pay.idx);
   out.amount = pay.amount;
   out.date = when.date; out.time = when.time;
   out.merchant = findMerchant(lines, flat, pay.end);
@@ -320,6 +331,15 @@ function readNotice(text, ref) {
   // El rechazo o el abono se anuncian junto al monto, no en la letra chica del final del correo
   out.kind = says(RE_NO, flat.slice(0, pay.end + 120)) ? 'x' : says(RE_IN, flat.slice(0, pay.end + 60)) ? 'd' : !RE_CARGO.test(flat) ? '' : pay.foreign ? 'f' : 'c';
   return out;
+}
+// El asunto, cuando viene en el texto: la app y los widgets anteponen «Asunto: …» si el atajo envía el asunto como
+// título, y un correo reenviado lo trae en su encabezado.
+function findSubject(lines) {
+  for (var i = 0; i < lines.length && i < 40; i++) {
+    var m = /^(?:asunto|subject)\s*:\s*(.+)$/i.exec(lines[i]);
+    if (m) return clean(m[1]);
+  }
+  return '';
 }
 function parseAny(raw, ref) {
   // Primero el texto tal como llegó. Si trae líneas cortadas con «=», primero su versión decodificada,
@@ -333,10 +353,18 @@ function parseAny(raw, ref) {
   }
   return first;
 }
-// Solo cuentan los correos de bip!. Los demás correos de Copec Pay (otras compras, abonos, promociones) se dejan fuera.
+// Solo cuentan los correos de bip!. Se descarta un correo solo cuando hay una señal de que es de otra cosa:
+//  1. Si se conoce el asunto, manda el asunto: tiene que decir «bip».
+//  2. Si no, manda el encabezado del aviso («Tu compra en … se realizó con éxito»): tiene que ser una compra en bip!.
+//  3. Si el texto no trae ni asunto ni encabezado (por ejemplo, porque se copió desde la mitad), se acepta un cargo
+//     que diga «bip» antes del monto o que sea un aviso de Copec Pay. El atajo ya deja pasar solo los correos con
+//     «bip» en el asunto.
 function parseMail(raw, ref) {
-  var p = parseAny(raw, ref);
-  if (!p.bip) p.kind = 'o';
+  var p = parseAny(raw, ref), ok;
+  if (p.subj) { ok = RE_BIP.test(p.subj); p.why = ok ? '' : 'subj'; }
+  else if (p.head) { ok = RE_BIP.test(p.head); p.why = ok ? '' : 'head'; }
+  else { ok = p.bip || (p.kind === 'c' && p.copec); p.why = ok ? '' : 'none'; }
+  if (!ok) p.kind = 'o';
   return p;
 }
 // Deja el cargo listo para guardarlo. «at» es el momento en que el aviso llegó al buzón (0 si se pegó a mano)
@@ -414,9 +442,9 @@ async function load() {
     if (!Array.isArray(issues)) break;
     issues.forEach(function (it) {
       if (!it || it.pull_request) return;
-      // «Copec» a secas es la etiqueta fija del atajo; cualquier otro título es el asunto del correo
+      // «Copec» a secas es la etiqueta fija del atajo; cualquier otro título es el asunto del correo (y manda: tiene que decir «bip»)
       const title = String(it.title || '').trim();
-      const text = (title && !/^(?:copec|aviso)$/i.test(title) ? title + '\n' : '') + String(it.body || '');
+      const text = (title && !/^(?:copec|aviso)$/i.test(title) ? 'Asunto: ' + title + '\n' : '') + String(it.body || '');
       const at = Date.parse(it.created_at) || 0;
       const p = parseMail(text, at);                 // solo los correos de bip!
       if (p.kind !== 'c') return;

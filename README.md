@@ -68,7 +68,11 @@ Funciona con el texto plano o con el correo en HTML, con los datos en líneas se
 La app considera únicamente los correos que traen «bip» en el asunto. El filtro se aplica dos veces:
 
 1. **En Atajos**, con la condición **El asunto contiene** `bip`: los correos de otro asunto ni siquiera se envían al buzón.
-2. **En la app**, que revisa el encabezado del aviso (lo que va antes del monto, donde está el asunto: «Tu compra en Carga bip!…»). Si ahí no dice «bip», el correo se deja fuera aunque haya llegado al buzón. Una mención de bip! en la letra chica de otro correo no cuenta.
+2. **En la app**, que deja fuera un correo solo cuando hay una señal de que no es de bip!:
+   - si conoce el asunto (porque el correo viene reenviado, o porque el atajo lo envía como título) y no dice «bip»;
+   - si el aviso trae su encabezado («Tu compra en … se realizó con éxito») y la compra es en otro comercio.
+
+   Si el texto no trae ni asunto ni encabezado, como cuando se copia el correo desde la mitad, se acepta igual si es un aviso de cargo de Copec Pay (con «Cuenta Vista», «Copec Pay» o «N° transacción»). Una mención de bip! en la letra chica de otro correo no cuenta.
 
 Tampoco se registran solos:
 
@@ -106,7 +110,7 @@ El buzón de Copec es propio (`copec-avisos`) y distinto del de FAN y Master, pa
 
 1. Abre **Atajos**, entra a **Automatización** y toca **+**.
 2. Elige **Correo electrónico** y en **Remitente** escribe `mensajeria@copecpay.cl`.
-3. En **El asunto contiene** escribe `bip`: solo esos correos se envían al buzón. En **Cuenta** elige **iCloud**, que es donde llegan. Deja vacío **Destinatario**.
+3. En **El asunto contiene** escribe `bip`: solo esos correos se envían al buzón. Deja **Cualquier cuenta** y **Cualquier destinatario**, igual que en la automatización de FAN.
 4. Marca **Ejecutar inmediatamente**, toca **Siguiente** y elige **Nueva automatización en blanco**.
 5. Toca **Agregar acción**, busca «URL» y elige **Obtener contenido de URL**. En la URL pega `https://api.github.com/repos/tu-usuario/copec-avisos/issues`.
 6. Toca **Mostrar más** y en **Método** elige **POST**.
@@ -128,7 +132,7 @@ El buzón de Copec es propio (`copec-avisos`) y distinto del de FAN y Master, pa
 1. Toca **Actualizar**.
 2. Abre **Buzón y atajo** y mira **Últimos correos del buzón**. Ahí están los últimos correos que recibió el buzón, del más reciente al más antiguo, con la hora en que llegaron y lo que la app hizo con cada uno.
 3. Si el correo no está en la lista, no llegó al buzón: su asunto no decía «bip», Atajos no se ejecutó o GitHub rechazó el envío. Un correo que Atajos no envió en su momento no llega después: ese cargo se agrega con **Pegar un aviso**.
-4. Si está en la lista, la app dice por qué no lo registró: era un correo de otro asunto, un abono, un cargo rechazado, un cargo que eliminaste o un correo de bip! que no reconoce como aviso de cargo. En ese último caso muestra el texto del correo.
+4. Si está en la lista, la app dice por qué no lo registró: era un correo que no es de bip! (y por qué), un abono, un cargo rechazado, un cargo que eliminaste o un correo de bip! que no reconoce como aviso de cargo. En ese último caso muestra el texto del correo.
 
 El botón **Copiar este detalle** copia la lista con el texto de cada correo, para revisar un aviso que la app no reconoce. **Leer todo el buzón ahora** repasa el buzón completo y no solo los correos nuevos.
 
