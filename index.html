@@ -12,8 +12,8 @@
 <meta name="theme-color" content="#DFE9FD" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#13244A" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg?v=ds1">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=ds1">
 <!--STANDALONE:END-->
 <style>
 /* Concepto: la cuenta Copec Pay en el bolsillo. Arriba el saldo, en una tarjeta azul eléctrico con el acento verde
@@ -160,14 +160,18 @@ body {
   --tit: var(--ds-b1); --tit-ink: #2141D6; --tit-bg: var(--ds-tint-soft);
   --adi: #2E9BD6; --adi-ink: #146896; --adi-bg: #DDF3FC;
   --font-display: var(--ds-font-display); --font-body: var(--ds-font);
+  --piti: #2950F4; --piti-bg: #E5ECFE; --emi: #0B85BD; --emi-bg: #DCF2FB; --on-person: #FFFFFF;
+  --done: var(--ds-pos); --done-bg: var(--ds-pos-soft); --on-done: #FFFFFF; --warn: var(--ds-warn);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --piti: #8EB0FA; --piti-bg: rgba(113, 157, 246, 0.18); --emi: #7FD3F5; --emi-bg: rgba(127, 211, 245, 0.15); --on-person: #0A1224; --on-done: #0A1224;
     --tit: #8EB0FA; --tit-ink: #B9CDFC; --tit-bg: rgba(113, 157, 246, 0.18);
     --adi: #7FD3F5; --adi-ink: #BDEBFB; --adi-bg: rgba(127, 211, 245, 0.15);
   }
 }
 :root[data-theme="dark"] {
+    --piti: #8EB0FA; --piti-bg: rgba(113, 157, 246, 0.18); --emi: #7FD3F5; --emi-bg: rgba(127, 211, 245, 0.15); --on-person: #0A1224; --on-done: #0A1224;
   --tit: #8EB0FA; --tit-ink: #B9CDFC; --tit-bg: rgba(113, 157, 246, 0.18);
   --adi: #7FD3F5; --adi-ink: #BDEBFB; --adi-bg: rgba(127, 211, 245, 0.15);
 }
@@ -399,6 +403,7 @@ button, input, select, textarea { font-family: inherit; }
 :focus-visible { outline-color: var(--ds-tint); }
 input, select, textarea { accent-color: var(--ds-btn); caret-color: var(--ds-tint); }
 @keyframes ds-rise { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+.mark.app-icon, img.app-icon { display: block; overflow: hidden; padding: 0; background: none; object-fit: cover; border-radius: 23%; box-shadow: 0 0 0 0.5px rgba(14, 27, 51, 0.08), 0 4px 12px rgba(41, 80, 244, 0.25); }
 /* ── fin de la base común ── */
 
 /* ── Domésticas · componentes (familia de cuentas: Copec, FAN, Master, LiderBCI) ── */
