@@ -1,17 +1,57 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Copec">
-  <defs>
-    <linearGradient id="fondo" x1="0.15" y1="0" x2="0.85" y2="1">
-      <stop offset="0" stop-color="#1F4DFF"/>
-      <stop offset="0.45" stop-color="#002DF9"/>
-      <stop offset="1" stop-color="#001A9C"/>
-    </linearGradient>
-    <radialGradient id="luz" cx="0.22" cy="0.12" r="0.9">
-      <stop offset="0" stop-color="#5C86FF" stop-opacity="0.55"/>
-      <stop offset="0.55" stop-color="#5C86FF" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <rect width="1024" height="1024" fill="url(#fondo)"/>
-  <rect width="1024" height="1024" fill="url(#luz)"/>
-  <path d="M683.0 350.0A252 252 0 1 0 683.0 674.0" fill="none" stroke="#FFFFFF" stroke-width="128" stroke-linecap="round"/>
-  <circle cx="764" cy="512" r="84" fill="#00FF7E"/>
+<defs>
+  <linearGradient id="icopecxbg" x1="0.18" y1="0" x2="0.82" y2="1">
+    <stop offset="0" stop-color="#7AA4F7"/><stop offset="0.46" stop-color="#4D78F3"/><stop offset="1" stop-color="#2950F4"/>
+  </linearGradient>
+  <radialGradient id="icopecxlt" cx="0.18" cy="0.06" r="0.78">
+    <stop offset="0" stop-color="#BDEBFB" stop-opacity="0.62"/><stop offset="1" stop-color="#BDEBFB" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="icopecxdk" cx="0.86" cy="1.02" r="0.7">
+    <stop offset="0" stop-color="#1B3AD6" stop-opacity="0.45"/><stop offset="1" stop-color="#1B3AD6" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="icopecxgw" gradientUnits="userSpaceOnUse" x1="300" y1="160" x2="700" y2="870">
+    <stop offset="0" stop-color="#FFFFFF"/><stop offset="0.5" stop-color="#EEF5FF"/><stop offset="1" stop-color="#C7DCFC"/>
+  </linearGradient>
+  <linearGradient id="icopecxgs" gradientUnits="userSpaceOnUse" x1="300" y1="160" x2="700" y2="870">
+    <stop offset="0" stop-color="#EAFAFF" stop-opacity="0.9"/><stop offset="0.5" stop-color="#BDEBFB" stop-opacity="0.66"/><stop offset="1" stop-color="#99C2F8" stop-opacity="0.58"/>
+  </linearGradient>
+  <filter id="icopecxglass" x="-30%" y="-30%" width="160%" height="170%" color-interpolation-filters="sRGB">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="20" result="sb"/>
+    <feOffset in="sb" dy="24" result="so"/>
+    <feFlood flood-color="#0E237E" flood-opacity="0.42"/>
+    <feComposite in2="so" operator="in" result="sh0"/>
+    <feComposite in="sh0" in2="SourceAlpha" operator="out" result="shadow"/>
+    <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="b1"/>
+    <feOffset in="b1" dy="8" result="o1"/>
+    <feComposite in="SourceAlpha" in2="o1" operator="arithmetic" k2="1" k3="-1" result="topEdge"/>
+    <feFlood flood-color="#FFFFFF" flood-opacity="1"/>
+    <feComposite in2="topEdge" operator="in" result="hl"/>
+    <feGaussianBlur in="SourceAlpha" stdDeviation="9" result="b2"/>
+    <feOffset in="b2" dy="-12" result="o2"/>
+    <feComposite in="SourceAlpha" in2="o2" operator="arithmetic" k2="1" k3="-1" result="botEdge"/>
+    <feFlood flood-color="#2950F4" flood-opacity="0.38"/>
+    <feComposite in2="botEdge" operator="in" result="inner"/>
+    <feGaussianBlur in="SourceAlpha" stdDeviation="14" result="bump"/>
+    <feSpecularLighting in="bump" surfaceScale="5" specularConstant="0.9" specularExponent="32" lighting-color="#FFFFFF" result="spec">
+      <feDistantLight azimuth="235" elevation="58"/>
+    </feSpecularLighting>
+    <feComposite in="spec" in2="SourceAlpha" operator="in" result="specIn"/>
+    <feMorphology in="SourceAlpha" operator="dilate" radius="2.4" result="dil"/>
+    <feComposite in="dil" in2="SourceAlpha" operator="out" result="ringA"/>
+    <feFlood flood-color="#0B1F6E" flood-opacity="0.32"/>
+    <feComposite in2="ringA" operator="in" result="rim"/>
+    <feMerge>
+      <feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/><feMergeNode in="inner"/>
+      <feMergeNode in="specIn"/><feMergeNode in="hl"/><feMergeNode in="rim"/>
+    </feMerge>
+  </filter>
+</defs>
+<g>
+<rect width="1024" height="1024" fill="url(#icopecxbg)"/>
+<rect width="1024" height="1024" fill="url(#icopecxlt)"/>
+<rect width="1024" height="1024" fill="url(#icopecxdk)"/>
+<g filter="url(#icopecxglass)" fill="url(#icopecxgw)"><rect x="306" y="724" width="108" height="104" rx="34"/><rect x="610" y="724" width="108" height="104" rx="34"/><rect x="252" y="196" width="520" height="588" rx="100"/></g>
+<g filter="url(#icopecxglass)" fill="url(#icopecxgs)"><rect x="304" y="300" width="416" height="238" rx="40"/><circle cx="354" cy="650" r="40"/><circle cx="670" cy="650" r="40"/></g>
+<path d="M436 246 H588" fill="none" stroke="#2950F4" stroke-opacity="0.32" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/><path d="M472 650 H552" fill="none" stroke="#2950F4" stroke-opacity="0.32" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
 </svg>
