@@ -63,6 +63,27 @@ De cada aviso la app toma:
 
 Funciona con el texto plano o con el correo en HTML, con los datos en líneas separadas o en una sola, y también si el correo llega codificado (con `=C3=A9` y líneas cortadas con `=`, o en base64).
 
+Desde noviembre de 2026 el correo de una carga automática tiene otro formato. La app lo lee igual y nombra el cargo con quien usa la tarjeta (`Carga bip! · Pablo`, `Carga bip! · Piti`):
+
+```
+¡Hola Pablo!,
+Hemos cargado tu tarjeta bip! automáticamente
+Monto
+$585
+Fecha y Hora
+2026-11-15 01:00:54
+Tarjeta Bip
+Pablo - 00000000
+Código de Transacción
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+Método de pago
+Copec Pay **** **** **** 0000
+```
+
+### Varios correos en un mismo issue
+
+Cada correo trae un solo aviso. Pero cuando llegan varios juntos (los cargos de la noche, al encender el iPhone), Atajos los envía todos en un mismo issue, uno a continuación del otro. La app separa el issue en un correo por cada saludo o encabezado («¡Hola Pablo!», «Tu compra en…», «Hemos cargado…») y registra un cargo por cada uno. En **Buzón y atajo** aparecen como «correo 1 de 2», «correo 2 de 2». El widget y el panel hacen lo mismo.
+
 ### Solo los correos de bip!
 
 La app considera únicamente los correos que traen «bip» en el asunto. El filtro se aplica dos veces:

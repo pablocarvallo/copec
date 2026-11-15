@@ -346,6 +346,7 @@ function findOp(flat) {
   var m = RE_OP.exec(flat);
   return m && /\d/.test(m[1]) ? m[1].toUpperCase() : '';
 }
+var RE_BIPCARD = /tarjeta\s+bip!?\s*:?\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ .'’]{0,30}?)\s*[-–—]\s*\d{5,}/i;
 // ¿El texto afirma esto? No cuenta si viene en una frase condicional («si la compra no fue realizada por ti…»).
 function says(re, text) {
   var g = new RegExp(re.source, 'gi'), m;
@@ -372,6 +373,11 @@ function readNotice(text, ref) {
   out.amount = pay.amount;
   out.date = when.date; out.time = when.time;
   out.merchant = findMerchant(lines, flat, pay.end);
+  if (!out.merchant) {
+    // «Tarjeta Bip: Pablo - 16920882»: el cargo lleva el nombre de quien usa la tarjeta (sin el número)
+    var tb = RE_BIPCARD.exec(flat);
+    if (tb) out.merchant = 'Carga bip! · ' + clean(tb[1]);
+  }
   out.op = findOp(flat);
   // El asunto y el encabezado del aviso van antes del monto: ahí, o en el nombre del comercio, tiene que decir «bip».
   // Una mención de bip! más abajo (en la letra chica de otro correo) no cuenta.
@@ -389,40 +395,67 @@ function findSubject(lines) {
   }
   return '';
 }
-function parseAny(raw, ref) {
-  // Primero el texto tal como llegó. Si trae líneas cortadas con «=», primero su versión decodificada,
-  // para no leer un comercio o una hora partidos por la mitad.
+// Cada correo trae un solo aviso, pero un mensaje del buzón puede traer varios correos: cuando llegan juntos (los
+// cargos de la noche, al encender el iPhone), Atajos los envía todos en un mismo issue, uno a continuación del otro.
+// Cada correo empieza con su saludo o su encabezado («¡Hola Pablo!», «Tu compra en …», «Hemos cargado …»): ahí se
+// corta. Un trozo sin monto (un saludo suelto, la letra chica, el encabezado de un reenvío) se une al correo
+// siguiente, o al anterior si es el último.
+var RE_START = /^(?:¡\s*)?hola\b|^tu\s+(?:compra|pago|carga)\s+en\b|^hemos\s+cargado\b|^inicio\s+del\s+mensaje\s+reenviado|^begin\s+forwarded|^-{2,}\s*(?:mensaje|forwarded)/i;
+function splitNotices(text) {
+  var parts = [], cur = [];
+  String(text).split(/\r?\n/).forEach(function (l) {
+    var t = l.replace(/^[\s\u00a0\ufffc\u200b*•>]+/, '');
+    if (RE_START.test(t) && cur.join('').trim()) { parts.push(cur.join('\n')); cur = []; }
+    cur.push(l);
+  });
+  parts.push(cur.join('\n'));
+  var out = [], hold = '';
+  parts.forEach(function (t) {
+    if (findAmount(t.replace(/\s+/g, ' '))) { out.push(hold + t); hold = ''; }
+    else hold += t + '\n';
+  });
+  if (!out.length) return [String(text)];
+  if (hold) out[out.length - 1] += '\n' + hold;
+  return out;
+}
+// Lee todos los avisos de un mensaje. Primero el texto tal como llegó. Si trae líneas cortadas con «=», primero su
+// versión decodificada, para no leer un comercio o una hora partidos por la mitad.
+function readAll(raw, ref) {
   var texts = [String(raw == null ? '' : raw)], alt = unwrapMail(raw), first = null;
   texts = /=\r?\n/.test(texts[0]) ? alt.concat(texts) : texts.concat(alt);
   for (var i = 0; i < texts.length; i++) {
-    var p = readNotice(plainText(texts[i]), ref);
-    if (p.kind) return p;
-    if (!first || (p.bip && !first.bip)) first = p;
+    var ps = splitNotices(plainText(texts[i])).map(function (t) { return readNotice(t, ref); });
+    if (ps.some(function (p) { return p.kind; })) return ps;
+    if (!first || (ps[0].bip && !first[0].bip)) first = ps;
   }
   return first;
 }
+function parseAny(raw, ref) { return readAll(raw, ref)[0]; }
 // Solo cuentan los correos de bip!. Se descarta un correo solo cuando hay una señal de que es de otra cosa:
 //  1. Si se conoce el asunto, manda el asunto: tiene que decir «bip».
 //  2. Si no, manda el encabezado del aviso («Tu compra en … se realizó con éxito»): tiene que ser una compra en bip!.
 //  3. Si el texto no trae ni asunto ni encabezado (por ejemplo, porque se copió desde la mitad), se acepta un cargo
 //     que diga «bip» antes del monto o que sea un aviso de Copec Pay. El atajo ya deja pasar solo los correos con
 //     «bip» en el asunto.
-function parseMail(raw, ref) {
-  var p = parseAny(raw, ref), ok;
+function judge(p) {
+  var ok;
   if (p.subj) { ok = RE_BIP.test(p.subj); p.why = ok ? '' : 'subj'; }
   else if (p.head) { ok = RE_BIP.test(p.head); p.why = ok ? '' : 'head'; }
   else { ok = p.bip || (p.kind === 'c' && p.copec); p.why = ok ? '' : 'none'; }
   if (!ok) p.kind = 'o';
   return p;
 }
-// Deja el cargo listo para guardarlo. «at» es el momento en que el aviso llegó al buzón (0 si se pegó a mano)
-// y «num», su número dentro del buzón.
+// Todos los avisos de un mensaje, cada uno ya juzgado; parseMail da solo el primero
+function parseMails(raw, ref) { return readAll(raw, ref).map(judge); }
+function parseMail(raw, ref) { return parseMails(raw, ref)[0]; }
+// Deja el cargo listo para guardarlo. «at» es el momento en que el aviso llegó al buzón (0 si se pegó a mano),
+// «num», el número del mensaje dentro del buzón, y «idx», el lugar del aviso dentro de ese mensaje.
 //  · Con fecha y hora en el aviso: se usan tal cual. Es el momento real del cargo, aunque el correo llegue horas después.
 //  · Con fecha y sin hora: si el aviso llegó ese mismo día, el cargo fue en la madrugada (00:00); si llegó al día
 //    siguiente, fue en la noche anterior (23:59).
 //  · Con hora y sin fecha: el día es el de llegada, o el anterior si esa hora todavía no había pasado.
 //  · Sin fecha ni hora: se usa el momento de llegada.
-function settle(p, at, num) {
+function settle(p, at, num, idx) {
   var ref = new Date(at || Date.now()), date = p.date, time = p.time, nt = 0, est = 0;
   if (!date) {
     date = dayKey(ref);
@@ -434,7 +467,7 @@ function settle(p, at, num) {
   var name = p.merchant || 'Carga bip!', exact = !!(p.op || (p.date && p.time));
   var key = p.op ? 'OP' + p.op + '|' + p.amount
     : exact ? date + 'T' + time + '|' + p.amount + '|' + name.toUpperCase()
-    : num ? 'I' + num + '|' + p.amount
+    : num ? 'I' + num + (idx ? '.' + idx : '') + '|' + p.amount
     : date + '|' + p.amount + '|' + name.toUpperCase() + '|P';
   return { date: date, time: time, amount: p.amount, merchant: name, key: key, exact: exact, nt: nt, est: est, rcv: at || 0, raw: p.text };
 }
@@ -470,13 +503,15 @@ async function load(gh) {
       const title = String(it.title || '').trim();
       const text = (title && !/^(?:copec|aviso)$/i.test(title) ? 'Asunto: ' + title + '\n' : '') + String(it.body || '');
       const at = Date.parse(it.created_at) || 0;
-      const p = parseMail(text, at);                 // solo los correos de bip!
-      if (p.kind !== 'c') return;
-      const f = settle(p, at, +it.number || 0), sk = skel(f.key);
-      if (known[sk]) return;
-      known[sk] = 1;
-      if (st.at && !counts(f, st.at)) return;         // anterior al saldo de partida: ya está incluido en él
-      nuevas.push(f);
+      // Un issue puede traer varios correos (los que llegaron juntos): se lee cada uno. Solo cuentan los de bip!
+      parseMails(text, at).forEach(function (p, i) {
+        if (p.kind !== 'c') return;
+        const f = settle(p, at, +it.number || 0, i), sk = skel(f.key);
+        if (known[sk]) return;
+        known[sk] = 1;
+        if (st.at && !counts(f, st.at)) return;       // anterior al saldo de partida: ya está incluido en él
+        nuevas.push(f);
+      });
     });
     if (issues.length < 100) break;
   }
