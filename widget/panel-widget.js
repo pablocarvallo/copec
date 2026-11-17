@@ -205,11 +205,11 @@ function plainText(s) {
       .replace(/<[^>]+>/g, ' ');
   }
   if (/&[#a-z0-9]+;/i.test(s)) s = decodeEntities(s);
-  return s.replace(/[   ​‌‍﻿]/g, ' ');
+  return s.replace(/\ufffc/g, ' ').replace(/[   ​‌‍﻿]/g, ' ');
 }
 
 var LETTER = 'a-záéíóúüñ';
-// La app registra solo los correos de bip!: los que traen «bip» en el asunto («Tu compra en Carga bip! se realizó con éxito»)
+// «bip» como palabra: sirve para nombrar el cargo («Carga bip!») cuando el aviso no dice el comercio
 var RE_BIP = new RegExp('(?:^|[^' + LETTER + '0-9])bip(?![' + LETTER + '0-9])', 'i');
 // Encabezado del aviso: «Tu compra en Carga bip! se realizó con éxito». Lo que va entre «en» y «se realizó» es el comercio.
 var RE_HEAD = /(?:compra|pago|cargo|transacci[oó]n|recarga)\s+en\s+(.{2,60}?)\s+(?:se\s+(?:realiz|proces|complet|hizo|efectu)|fue\s|ha\s+sido|no\s+(?:se\s+)?(?:pudo|ha\s+podido|realiz|proces)|est[aá]\s)/i;
@@ -246,10 +246,12 @@ function findAmount(flat) {
     var amount = parseInt((m[2] || m[3]).replace(/[.,]/g, ''), 10);
     if (!(amount > 0) || amount > MAX_AMOUNT) continue;
     var pre = flat.slice(Math.max(0, m.index - 40), m.index);
-    var hit = { amount: amount, idx: m.index, end: re.lastIndex, foreign: /US|U\$S|D[OÓ]L/.test(cur), total: /(?:^|[^a-z])total[^$]{0,18}$/i.test(pre) };
+    var hit = { amount: amount, idx: m.index, end: re.lastIndex, foreign: /US|U\$S|D[OÓ]L/.test(cur), total: /(?:^|[^a-z])total[^$]{0,18}$/i.test(pre),
+      label: /(?:^|[^a-z])monto\s*(?:total\s*)?:?\s*$/i.test(pre) };
     (RE_AUX.test(pre) ? aux : main).push(hit);
   }
   for (var i = 0; i < main.length; i++) if (main[i].total) return main[i];
+  for (i = 0; i < main.length; i++) if (main[i].label) return main[i];
   return main[0] || (RE_CARGO.test(flat) ? aux[0] : null) || null;
 }
 
@@ -346,6 +348,8 @@ function findOp(flat) {
   var m = RE_OP.exec(flat);
   return m && /\d/.test(m[1]) ? m[1].toUpperCase() : '';
 }
+var RE_FMT_H = /hemos\s+cargado\s+tu\s+tarjeta\s+bip|c[oó]digo\s+de\s+transacci[oó]n/i;
+var RE_FMT_T = /tu\s+compra\s+en\s|n[°º]\s*(?:de\s+)?transacci[oó]n/i;
 var RE_BIPCARD = /tarjeta\s+bip!?\s*:?\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ .'’]{0,30}?)\s*[-–—]\s*\d{5,}/i;
 // ¿El texto afirma esto? No cuenta si viene en una frase condicional («si la compra no fue realizada por ti…»).
 function says(re, text) {
@@ -359,7 +363,7 @@ function says(re, text) {
 }
 
 // Lee un aviso. «kind»: 'c' cargo, 'd' aviso de abono o devolución, 'x' cargo rechazado, 'f' cargo en dólares,
-// 'o' correo que no es de bip! (lo decide parseMail) y '' un correo que no se reconoce como aviso.
+// 'o' un correo que no es de Copec Pay (lo decide judge) y '' un correo que no se reconoce como aviso.
 function readNotice(text, ref) {
   var lines = text.split(/[\r\n\t]+/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
   var flat = lines.join(' ');
@@ -372,15 +376,18 @@ function readNotice(text, ref) {
   var when = findWhen(flat, ref, pay.idx);
   out.amount = pay.amount;
   out.date = when.date; out.time = when.time;
-  out.merchant = findMerchant(lines, flat, pay.end);
-  if (!out.merchant) {
-    // «Tarjeta Bip: Pablo - 16920882»: el cargo lleva el nombre de quien usa la tarjeta (sin el número)
-    var tb = RE_BIPCARD.exec(flat);
-    if (tb) out.merchant = 'Carga bip! · ' + clean(tb[1]);
-  }
+  // Formato del correo: Copec Pay manda dos correos por cada carga de bip! (ver sameCharge)
+  out.fmt = RE_FMT_H.test(flat) ? 'h' : RE_FMT_T.test(flat) ? 't' : '';
+  // Nombre del cargo, primero con los datos del propio aviso: el correo puede traer pegado el texto de otros correos
+  // que llegaron al mismo tiempo (publicidad), y ahí la búsqueda general encontraría cualquier cosa.
+  //  · «Tarjeta Bip: Pablo - 16920882»: el nombre de quien usa la tarjeta (sin el número);
+  //  · «Tu compra en Carga bip! se realizó…»: el comercio del encabezado.
+  var tb = RE_BIPCARD.exec(flat);
+  if (tb) out.merchant = 'Carga bip! · ' + clean(tb[1]);
+  else if (out.head && okName(out.head)) out.merchant = out.head;
+  else out.merchant = findMerchant(lines, flat, pay.end);
   out.op = findOp(flat);
-  // El asunto y el encabezado del aviso van antes del monto: ahí, o en el nombre del comercio, tiene que decir «bip».
-  // Una mención de bip! más abajo (en la letra chica de otro correo) no cuenta.
+  // ¿Es una carga de bip!? Lo dice el encabezado (antes del monto) o el comercio, no la letra chica del final.
   out.bip = RE_BIP.test(flat.slice(0, pay.idx) + ' ' + out.merchant);
   // El rechazo o el abono se anuncian junto al monto, no en la letra chica del final del correo
   out.kind = says(RE_NO, flat.slice(0, pay.end + 120)) ? 'x' : says(RE_IN, flat.slice(0, pay.end + 60)) ? 'd' : !RE_CARGO.test(flat) ? '' : pay.foreign ? 'f' : 'c';
@@ -431,18 +438,15 @@ function readAll(raw, ref) {
   return first;
 }
 function parseAny(raw, ref) { return readAll(raw, ref)[0]; }
-// Solo cuentan los correos de bip!. Se descarta un correo solo cuando hay una señal de que es de otra cosa:
-//  1. Si se conoce el asunto, manda el asunto: tiene que decir «bip».
-//  2. Si no, manda el encabezado del aviso («Tu compra en … se realizó con éxito»): tiene que ser una compra en bip!.
-//  3. Si el texto no trae ni asunto ni encabezado (por ejemplo, porque se copió desde la mitad), se acepta un cargo
-//     que diga «bip» antes del monto o que sea un aviso de Copec Pay. El atajo ya deja pasar solo los correos con
-//     «bip» en el asunto.
+// Cuentan los avisos de Copec Pay, con cualquier asunto. El atajo solo se activa con los correos de
+// mensajeria@copecpay.cl, pero cuando llegan varios correos juntos el mensaje trae también los de otros remitentes
+// que llegaron al mismo tiempo (publicidad, por ejemplo): esos no tienen las señas de un aviso de Copec Pay
+// («Copec Pay», «Cuenta Vista», «N° transacción», «Código de Transacción») y se dejan fuera.
+// (Hasta noviembre de 2026 contaban solo los de bip!.)
 function judge(p) {
-  var ok;
-  if (p.subj) { ok = RE_BIP.test(p.subj); p.why = ok ? '' : 'subj'; }
-  else if (p.head) { ok = RE_BIP.test(p.head); p.why = ok ? '' : 'head'; }
-  else { ok = p.bip || (p.kind === 'c' && p.copec); p.why = ok ? '' : 'none'; }
-  if (!ok) p.kind = 'o';
+  var ok = p.copec || !!p.fmt;
+  p.why = ok ? '' : 'otro';
+  if (!ok && p.kind) p.kind = 'o';
   return p;
 }
 // Todos los avisos de un mensaje, cada uno ya juzgado; parseMail da solo el primero
@@ -464,12 +468,25 @@ function settle(p, at, num, idx) {
   } else if (!time) {
     nt = 1; time = at && dayKey(ref) > date ? '23:59' : '00:00';
   }
-  var name = p.merchant || 'Carga bip!', exact = !!(p.op || (p.date && p.time));
+  var name = p.merchant || (p.bip || p.fmt ? 'Carga bip!' : 'Cargo Copec Pay'), exact = !!(p.op || (p.date && p.time));
   var key = p.op ? 'OP' + p.op + '|' + p.amount
     : exact ? date + 'T' + time + '|' + p.amount + '|' + name.toUpperCase()
     : num ? 'I' + num + (idx ? '.' + idx : '') + '|' + p.amount
     : date + '|' + p.amount + '|' + name.toUpperCase() + '|P';
-  return { date: date, time: time, amount: p.amount, merchant: name, key: key, exact: exact, nt: nt, est: est, rcv: at || 0, raw: p.text };
+  return { date: date, time: time, amount: p.amount, merchant: name, key: key, exact: exact, nt: nt, est: est, rcv: at || 0, raw: p.text, fmt: p.fmt || '' };
+}
+// Copec Pay manda DOS correos por cada carga de bip!, los dos desde mensajeria@copecpay.cl y casi siempre juntos:
+//  · 'h': «¡Hola Pablo! Hemos cargado tu tarjeta bip! automáticamente», con «Código de Transacción» (1Xsrr34…);
+//  · 't': «Tu compra en Carga bip! se realizó con éxito», con «N° transacción» (845067).
+// Tienen números de transacción distintos, pero son el mismo cargo: mismo monto y uno o dos minutos de diferencia.
+// Dos avisos de formatos distintos, del mismo monto y con 5 minutos o menos entre uno y otro, son el mismo cargo.
+var TWIN_MIN = 5;
+function chargeMin(x) {
+  var d = String(x.date).split('-'), t = String(x.time).split(':');
+  return Date.UTC(+d[0], +d[1] - 1, +d[2], +t[0] || 0, +t[1] || 0) / 60000;
+}
+function sameCharge(a, b) {
+  return !!(a && b && a.fmt && b.fmt && a.fmt !== b.fmt && a.amount === b.amount && Math.abs(chargeMin(a) - chargeMin(b)) <= TWIN_MIN);
 }
 // La clave de un cargo, sin signos ni acentos en el comercio: así un mismo aviso se reconoce aunque el correo
 // haya llegado una vez con el texto dañado y otra vez bien.
@@ -495,6 +512,8 @@ async function load(gh) {
   (st.keys || []).forEach(function (k) { known[k] = 1; });
   const since = st.read > 0 ? sinceParam(st.read) : '';
   const nuevas = [];
+  // Cargos que pueden ser el otro correo de uno nuevo: los recientes de la app que aún no tienen el suyo, y los nuevos
+  const pool = (st.rec || []).map(function (x) { return { date: x.date, time: x.time, amount: x.amount, fmt: x.fmt, n: -1 }; });
   for (let page = 1; page <= 3; page++) {
     const issues = await gh('/issues?state=all&sort=created&direction=asc&per_page=100&page=' + page + since);
     if (!Array.isArray(issues)) break;
@@ -503,13 +522,23 @@ async function load(gh) {
       const title = String(it.title || '').trim();
       const text = (title && !/^(?:copec|aviso)$/i.test(title) ? 'Asunto: ' + title + '\n' : '') + String(it.body || '');
       const at = Date.parse(it.created_at) || 0;
-      // Un issue puede traer varios correos (los que llegaron juntos): se lee cada uno. Solo cuentan los de bip!
+      // Un issue puede traer varios correos (los que llegaron juntos): se lee cada uno
       parseMails(text, at).forEach(function (p, i) {
         if (p.kind !== 'c') return;
         const f = settle(p, at, +it.number || 0, i), sk = skel(f.key);
         if (known[sk]) return;
         known[sk] = 1;
+        // Copec Pay manda dos correos por cada carga: si este es el otro correo de un cargo ya contado, no se cuenta
+        const mate = pool.find(function (x) { return !x.taken && sameCharge(f, x); });
+        if (mate) {
+          mate.taken = true;
+          if (mate.n >= 0 && f.fmt === 'h') nuevas[mate.n] = f;   // los dos nuevos: se muestra el que dice de quién es la tarjeta
+          return;
+        }
+        const entry = { date: f.date, time: f.time, amount: f.amount, fmt: f.fmt, n: -1 };
+        pool.push(entry);
         if (st.at && !counts(f, st.at)) return;       // anterior al saldo de partida: ya está incluido en él
+        entry.n = nuevas.length;
         nuevas.push(f);
       });
     });
@@ -875,7 +904,7 @@ function band(w, key, r) {
     label(w, r.msg, 11, WHITE, 0.85).lineLimit = 2;
     return;
   }
-  if (!r.buys.length) label(w, key === 'copec' ? 'Aún no hay cargos de bip!' : 'Aún no hay movimientos', 11, WHITE, 0.7);
+  if (!r.buys.length) label(w, key === 'copec' ? 'Aún no hay cargos' : 'Aún no hay movimientos', 11, WHITE, 0.7);
   r.buys.forEach(function (b, i) {
     if (i) w.addSpacer(1.5);
     const row = w.addStack();
