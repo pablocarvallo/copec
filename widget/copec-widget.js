@@ -182,9 +182,9 @@ var STRONG = 6;   // los seis primeros rótulos se aceptan también sin dos punt
 // Dónde termina un nombre dentro de una lista de datos: en el rótulo siguiente, un monto o una fecha. Los rótulos se
 // reconocen en minúsculas o con mayúscula inicial («Fecha»), no en mayúsculas completas: así «BANCO ESTADO» queda entero.
 var RE_STOP = new RegExp('\\s+(?:' + ['monto', 'total', 'valor', 'importe', 'fecha', 'hora', 'tarjeta', 'nro\\.?', 'n[uú]mero', 'c[oó]digo', 'operaci[oó]n',
-  'autorizaci[oó]n', 'cuotas?', 'tipo', 'medio', 'saldo', 'estado', 'rut', 'cuenta', 'comercio', 'detalle'].map(function (w) {
+  'autorizaci[oó]n', 'cuotas?', 'tipo', 'medio', 'saldo', 'estado', 'rut', 'cuenta', 'comercio', 'detalle', 'últimos?', 'd[ií]gitos'].map(function (w) {
   return '[' + w.charAt(0) + w.charAt(0).toUpperCase() + ']' + w.slice(1);
-}).join('|') + '|[Nn][°º])(?![' + LETTER + 'A-ZÁÉÍÓÚÜÑ])|\\s*(?:US\\$|\\$)\\s?\\d|\\s+\\d{1,2}[\\/.\\-]\\d{1,2}[\\/.\\-]\\d{2,4}|\\s+[|·•]\\s+');
+}).join('|') + '|[Nn][°º])(?![' + LETTER + 'A-ZÁÉÍÓÚÜÑ])|\\s+\\*{3,}|\\s*(?:US\\$|\\$)\\s?\\d|\\s+\\d{1,2}[\\/.\\-]\\d{1,2}[\\/.\\-]\\d{2,4}|\\s+[|·•]\\s+');
 // Dónde termina el nombre de un comercio dentro de una oración. Las palabras van en minúsculas a propósito:
 // los comercios suelen venir en mayúsculas («PIZZA CON TODO») y así no se cortan.
 var NAME_END = '(?=\\s+(?:el|con|por|a\\s+las|fecha|de\\s+fecha|del\\s+d[ií]a|mediante|desde|usando|fue|ha|han|se|est[aá]|qued[oó]|ya|que|realizad[oa]|aprobad[oa]|exitos[oa])\\s|\\s*[.;,](?:\\s|$)|\\s*$|\\s+(?:US\\$|\\$)\\s?\\d|\\s+\\d{1,2}[\\/.\\-]\\d{1,2}[\\/.\\-]\\d{2,4})';
@@ -278,8 +278,10 @@ function findMerchant(lines, flat, from) {
   // 3. «Comercio NOMBRE» en medio de una línea, sin dos puntos. El nombre debe partir con mayúscula o número, y el
   //    rótulo no puede ir todo en mayúsculas: ahí es parte del nombre de un comercio («COMERCIO UNO»).
   for (j = 0; j < STRONG; j++) {
-    m = new RegExp('(?:^|[^' + LETTER + '])(' + LABELS[j] + ')\\s+(.{2,90})', 'i').exec(flat);
-    if (m && m[1] !== m[1].toUpperCase() && /^[A-ZÁÉÍÓÚÑ0-9]/.test(m[2]) && okName(v = tidyName(m[2]))) return v;
+    re = new RegExp('(?:^|[^' + LETTER + '])(' + LABELS[j] + ')\\s+(?=(.{2,90}))', 'gi');
+    while ((m = re.exec(flat))) {
+      if (m[1] !== m[1].toUpperCase() && /^[A-ZÁÉÍÓÚÑ0-9]/.test(m[2]) && okName(v = tidyName(m[2]))) return v;
+    }
   }
   // 4. «… en NOMBRE el 10/10/2026»: primero lo que sigue al monto, después el texto completo
   var parts = [flat.slice(from), flat];
@@ -302,6 +304,8 @@ function findOp(flat) {
 }
 var RE_FMT_H = /hemos\s+cargado\s+tu\s+tarjeta\s+bip|c[oó]digo\s+de\s+transacci[oó]n/i;
 var RE_FMT_T = /tu\s+compra\s+en\s|n[°º]\s*(?:de\s+)?transacci[oó]n/i;
+// «Tu compra con tu Tarjeta digital Copec Pay Mastercard fue exitosa», con «Código autorización»
+var RE_FMT_M = /tarjeta\s+digital\s+copec\s+pay\s+mastercard|c[oó]digo\s+(?:de\s+)?autorizaci[oó]n/i;
 var RE_BIPCARD = /tarjeta\s+bip!?\s*:?\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ .'’]{0,30}?)\s*[-–—]\s*\d{5,}/i;
 // ¿El texto afirma esto? No cuenta si viene en una frase condicional («si la compra no fue realizada por ti…»).
 function says(re, text) {
@@ -329,7 +333,7 @@ function readNotice(text, ref) {
   out.amount = pay.amount;
   out.date = when.date; out.time = when.time;
   // Formato del correo: Copec Pay manda dos correos por cada carga de bip! (ver sameCharge)
-  out.fmt = RE_FMT_H.test(flat) ? 'h' : RE_FMT_T.test(flat) ? 't' : '';
+  out.fmt = RE_FMT_H.test(flat) ? 'h' : RE_FMT_M.test(flat) ? 'm' : RE_FMT_T.test(flat) ? 't' : '';
   // Nombre del cargo, primero con los datos del propio aviso: el correo puede traer pegado el texto de otros correos
   // que llegaron al mismo tiempo (publicidad), y ahí la búsqueda general encontraría cualquier cosa.
   //  · «Tarjeta Bip: Pablo - 16920882»: el nombre de quien usa la tarjeta (sin el número);
@@ -359,7 +363,7 @@ function findSubject(lines) {
 // Cada correo empieza con su saludo o su encabezado («¡Hola Pablo!», «Tu compra en …», «Hemos cargado …»): ahí se
 // corta. Un trozo sin monto (un saludo suelto, la letra chica, el encabezado de un reenvío) se une al correo
 // siguiente, o al anterior si es el último.
-var RE_START = /^(?:¡\s*)?hola\b|^tu\s+(?:compra|pago|carga)\s+en\b|^hemos\s+cargado\b|^inicio\s+del\s+mensaje\s+reenviado|^begin\s+forwarded|^-{2,}\s*(?:mensaje|forwarded)/i;
+var RE_START = /^(?:¡\s*)?hola\b|^tu\s+(?:compra|pago|carga)\s+en\b|^tu\s+compra\s+con\b|^hemos\s+cargado\b|^inicio\s+del\s+mensaje\s+reenviado|^begin\s+forwarded|^-{2,}\s*(?:mensaje|forwarded)/i;
 function splitNotices(text) {
   var parts = [], cur = [];
   String(text).split(/\r?\n/).forEach(function (l) {
@@ -431,14 +435,16 @@ function settle(p, at, num, idx) {
 //  · 'h': «¡Hola Pablo! Hemos cargado tu tarjeta bip! automáticamente», con «Código de Transacción» (1Xsrr34…);
 //  · 't': «Tu compra en Carga bip! se realizó con éxito», con «N° transacción» (845067).
 // Tienen números de transacción distintos, pero son el mismo cargo: mismo monto y uno o dos minutos de diferencia.
-// Dos avisos de formatos distintos, del mismo monto y con 5 minutos o menos entre uno y otro, son el mismo cargo.
+// Un aviso de cada formato, del mismo monto y con 5 minutos o menos entre uno y otro, son el mismo cargo.
+// Las compras con la Tarjeta digital Copec Pay Mastercard ('m') llegan en un solo correo y nunca se emparejan.
 var TWIN_MIN = 5;
 function chargeMin(x) {
   var d = String(x.date).split('-'), t = String(x.time).split(':');
   return Date.UTC(+d[0], +d[1] - 1, +d[2], +t[0] || 0, +t[1] || 0) / 60000;
 }
 function sameCharge(a, b) {
-  return !!(a && b && a.fmt && b.fmt && a.fmt !== b.fmt && a.amount === b.amount && Math.abs(chargeMin(a) - chargeMin(b)) <= TWIN_MIN);
+  var pair = (a && b) && ((a.fmt === 'h' && b.fmt === 't') || (a.fmt === 't' && b.fmt === 'h'));
+  return !!(pair && a.amount === b.amount && Math.abs(chargeMin(a) - chargeMin(b)) <= TWIN_MIN);
 }
 // La clave de un cargo, sin signos ni acentos en el comercio: así un mismo aviso se reconoce aunque el correo
 // haya llegado una vez con el texto dañado y otra vez bien.

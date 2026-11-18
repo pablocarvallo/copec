@@ -80,6 +80,29 @@ Método de pago
 Copec Pay **** **** **** 0000
 ```
 
+### Compras con la Tarjeta digital Copec Pay Mastercard
+
+Desde el 18 de noviembre de 2026 la app lee también el correo de una compra con la tarjeta, del mismo remitente (`mensajeria@copecpay.cl`). La compra descuenta del saldo igual que una carga de bip! y queda con el nombre del comercio:
+
+```
+Tu compra con tu Tarjeta digital Copec Pay Mastercard fue exitosa
+Tu compra fue autorizada y ahora el comercio tiene que validarla con nosotros para que sea definitiva. Si no ocurre en 30 días, te devolveremos el dinero.
+Monto
+$ 6.367
+Comercio
+PAYU *UBER TRIP
+Últimos 4 dígitos
+**** **** **** 0000
+Código autorización
+000000
+Fecha y Hora
+18/11/2026, 11:08:10
+```
+
+El «Código autorización» identifica la compra: el mismo correo nunca se registra dos veces. Llega en un solo correo, así que nunca se empareja con otro aviso (ver la sección siguiente). Para que estos correos lleguen al buzón, la automatización de Atajos no debe tener condición de asunto.
+
+Si el comercio no valida la compra en 30 días, Copec Pay devuelve el dinero: esa devolución se anota a mano con **Abono**.
+
 ### Dos correos por cada carga de bip!
 
 Por cada carga automática de bip!, `mensajeria@copecpay.cl` manda **dos** correos, casi siempre juntos:
@@ -89,7 +112,7 @@ Por cada carga automática de bip!, `mensajeria@copecpay.cl` manda **dos** corre
 | «¡Hola Pablo! Hemos cargado tu tarjeta bip! automáticamente» | «Código de Transacción», con letras y dígitos | `1Xsrr34…` |
 | «Tu compra en Carga bip! se realizó con éxito» | «N° transacción», solo dígitos | `845067` |
 
-Tienen números de transacción distintos, pero son **el mismo cargo**: el mismo monto, con uno o dos minutos de diferencia. La app los cuenta una sola vez: dos avisos de formatos distintos, del mismo monto y con 5 minutos o menos entre uno y otro, son el mismo cargo. Se queda el que dice de quién es la tarjeta («Carga bip! · Pablo»), y la clave del otro correo queda anotada en él (`twin`), para que el buzón no lo vuelva a agregar. En **Buzón y atajo** el segundo aparece como «Segundo correo del mismo cargo».
+Tienen números de transacción distintos, pero son **el mismo cargo**: el mismo monto, con uno o dos minutos de diferencia. La app los cuenta una sola vez: un «Hemos cargado…» y un «Tu compra en…» del mismo monto y con 5 minutos o menos entre uno y otro, son el mismo cargo. Se queda el que dice de quién es la tarjeta («Carga bip! · Pablo»), y la clave del otro correo queda anotada en él (`twin`), para que el buzón no lo vuelva a agregar. En **Buzón y atajo** el segundo aparece como «Segundo correo del mismo cargo».
 
 Si llegan dos cargas del mismo monto en pocos minutos (por ejemplo, una para cada tarjeta), cada «Hemos cargado» se empareja con un solo «Tu compra», así que se cuentan las dos.
 
@@ -243,7 +266,7 @@ Se abre como app independiente, con su icono, y funciona sin conexión.
 
 Los movimientos y el saldo quedan en el `localStorage` del navegador, en el dispositivo. Este repositorio solo contiene el código de la app. Los correos de Copec Pay pasan por el buzón, que es un repositorio privado aparte.
 
-- `copec-movimientos`: cada movimiento con tipo (`c` cargo, `d` abono), fecha (`date`), hora (`time`), descripción (`desc`), monto en pesos (`amount`) y origen (`mail` o `manual`). Los cargos leídos de un aviso guardan además la clave que evita duplicados (`key`), cuándo llegó el aviso al buzón (`rcv`), si el aviso venía sin hora (`nt`) o sin fecha (`est`), el comienzo del texto del correo (`raw`), el formato del correo (`fmt`: `h` para «Hemos cargado…», `t` para «Tu compra…») y la clave del otro correo del mismo cargo (`twin`).
+- `copec-movimientos`: cada movimiento con tipo (`c` cargo, `d` abono), fecha (`date`), hora (`time`), descripción (`desc`), monto en pesos (`amount`) y origen (`mail` o `manual`). Los cargos leídos de un aviso guardan además la clave que evita duplicados (`key`), cuándo llegó el aviso al buzón (`rcv`), si el aviso venía sin hora (`nt`) o sin fecha (`est`), el comienzo del texto del correo (`raw`), el formato del correo (`fmt`: `h` para «Hemos cargado…», `t` para «Tu compra en…», `m` para la compra con la tarjeta Mastercard) y la clave del otro correo del mismo cargo (`twin`).
 - `copec-cuenta`: el saldo de partida (`amount`), desde cuándo rige (`at`) y los avisos eliminados a propósito (`ignored`).
 - `copec-preferencias`: orden del listado, repositorio y token del buzón, momento de la última lectura y si el widget está activado.
 
