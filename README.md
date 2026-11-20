@@ -101,7 +101,13 @@ Fecha y Hora
 
 El «Código autorización» identifica la compra: el mismo correo nunca se registra dos veces. Llega en un solo correo, así que nunca se empareja con otro aviso (ver la sección siguiente). Para que estos correos lleguen al buzón, la automatización de Atajos no debe tener condición de asunto.
 
-Si el comercio no valida la compra en 30 días, Copec Pay devuelve el dinero: esa devolución se anota a mano con **Abono**.
+#### Compras anuladas
+
+Cuando el comercio anula la compra, llega otro correo del mismo remitente: «Tu compra con tu Tarjeta digital Copec Pay Mastercard fue **anulada**», «te devolvimos el dinero», con el mismo formato (Monto, Comercio, Código autorización, Fecha y Hora). Desde el 20 de noviembre de 2026 la app lo registra sola como una **devolución**: suma el monto al saldo y queda como «Anulación · NOMBRE DEL COMERCIO» (clave `AN` + código de autorización). La compra original sigue en la lista, así que el saldo queda como si no se hubiera comprado. Si Copec Pay devuelve el dinero de otra forma (por ejemplo, porque el comercio no validó la compra en 30 días) y no llega este correo, la devolución se anota a mano con **Abono**.
+
+#### Validaciones de la tarjeta
+
+Al agregar la tarjeta a una tienda o a una billetera, Copec Pay manda «Validación exitosa tarjeta Copec Pay Mastercard», por $0. No mueve dinero: la app lo ignora y en **Buzón y atajo** aparece como «Validación de la tarjeta».
 
 ### Dos correos por cada carga de bip!
 
@@ -130,7 +136,9 @@ No se registran solos:
 
 - el **texto de otros correos** que llegaron pegados en el mismo issue: aparece como «Correo que no es de Copec Pay»;
 - una **compra que no se pudo realizar**: no descuenta;
-- una **devolución o abono**: se anota a mano con **Abono**; la app avisa cuando llega uno.
+- un **abono** a la cuenta: se anota a mano con **Abono**; la app avisa cuando llega uno (las compras anuladas con la tarjeta sí se registran solas, ver más arriba);
+- una **validación de la tarjeta** por $0: no mueve dinero;
+- un **correo vacío**: ver «Si llega un correo y el cargo no aparece».
 
 Hasta noviembre de 2026 contaban solo los correos con «bip» en el asunto.
 
@@ -187,7 +195,8 @@ El buzón de Copec es propio (`copec-avisos`) y distinto del de FAN y Master, pa
 1. Toca **Actualizar**.
 2. Abre **Buzón y atajo** y mira **Últimos correos del buzón**. Ahí están los últimos correos que recibió el buzón, del más reciente al más antiguo, con la hora en que llegaron y lo que la app hizo con cada uno.
 3. Si el correo no está en la lista, no llegó al buzón: Atajos no se ejecutó o GitHub rechazó el envío. Un correo que Atajos no envió en su momento no llega después: ese cargo se agrega con **Pegar un aviso**.
-4. Si está en la lista, la app dice por qué no lo registró: era el segundo correo de un cargo ya registrado, texto de otro correo que no es de Copec Pay, un abono, un cargo rechazado, un cargo que eliminaste o un correo de bip! que no reconoce como aviso de cargo. En ese último caso muestra el texto del correo.
+4. Si está en la lista, la app dice por qué no lo registró: era el segundo correo de un cargo ya registrado, texto de otro correo que no es de Copec Pay, un abono, una validación de la tarjeta, un cargo rechazado, un cargo que eliminaste o un correo de bip! que no reconoce como aviso de cargo. En ese último caso muestra el texto del correo.
+5. Si aparece como **Correo vacío**, Atajos se ejecutó pero envió el *issue* sin el texto del correo (la descripción del *issue* en GitHub está vacía). La app no tiene de dónde leer el cargo: abre el correo en Mail, copia el texto y agrégalo con **Pegar un aviso**. Basta con uno de los dos correos de la carga de bip!; si después llega el otro, no se descuenta dos veces. Cuando llega un correo vacío, la app lo avisa una vez al leer el buzón.
 
 El botón **Copiar este detalle** copia la lista con el texto de cada correo, para revisar un aviso que la app no reconoce. **Leer todo el buzón ahora** repasa el buzón completo y no solo los correos nuevos.
 
@@ -266,7 +275,7 @@ Se abre como app independiente, con su icono, y funciona sin conexión.
 
 Los movimientos y el saldo quedan en el `localStorage` del navegador, en el dispositivo. Este repositorio solo contiene el código de la app. Los correos de Copec Pay pasan por el buzón, que es un repositorio privado aparte.
 
-- `copec-movimientos`: cada movimiento con tipo (`c` cargo, `d` abono), fecha (`date`), hora (`time`), descripción (`desc`), monto en pesos (`amount`) y origen (`mail` o `manual`). Los cargos leídos de un aviso guardan además la clave que evita duplicados (`key`), cuándo llegó el aviso al buzón (`rcv`), si el aviso venía sin hora (`nt`) o sin fecha (`est`), el comienzo del texto del correo (`raw`), el formato del correo (`fmt`: `h` para «Hemos cargado…», `t` para «Tu compra en…», `m` para la compra con la tarjeta Mastercard) y la clave del otro correo del mismo cargo (`twin`).
+- `copec-movimientos`: cada movimiento con tipo (`c` cargo, `d` abono), fecha (`date`), hora (`time`), descripción (`desc`), monto en pesos (`amount`) y origen (`mail` o `manual`). Una compra anulada leída del buzón es un abono (`d`) con origen `mail` y clave `AN…`. Los movimientos leídos de un aviso guardan además la clave que evita duplicados (`key`), cuándo llegó el aviso al buzón (`rcv`), si el aviso venía sin hora (`nt`) o sin fecha (`est`), el comienzo del texto del correo (`raw`), el formato del correo (`fmt`: `h` para «Hemos cargado…», `t` para «Tu compra en…», `m` para la compra con la tarjeta Mastercard) y la clave del otro correo del mismo cargo (`twin`).
 - `copec-cuenta`: el saldo de partida (`amount`), desde cuándo rige (`at`) y los avisos eliminados a propósito (`ignored`).
 - `copec-preferencias`: orden del listado, repositorio y token del buzón, momento de la última lectura y si el widget está activado.
 
